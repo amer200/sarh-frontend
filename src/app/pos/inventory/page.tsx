@@ -9,6 +9,7 @@ import {
     Barcode, Layers, TrendingUp, Edit3, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import api from '@/lib/api';
 
 interface Product {
     _id: string;
@@ -73,9 +74,7 @@ export default function InventoryPage() {
         try {
             setLoading(true);
             setErrorMessage('');
-            const res = await axios.get('http://localhost:5000/api/v1/pos/products', {
-                headers: getHeaders(authToken, sub)
-            });
+            const res = await api.get('/pos/products');
             setProducts(res.data.data);
         } catch (err: any) {
             if (err.response?.status === 401) {
@@ -232,8 +231,8 @@ export default function InventoryPage() {
                     <button
                         onClick={() => setFilterLowStock(!filterLowStock)}
                         className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${filterLowStock
-                                ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
-                                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                            ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                            : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
                             }`}
                     >
                         <AlertTriangle size={14} /> عرض النواقص فقط ({lowStockCount})
@@ -277,8 +276,8 @@ export default function InventoryPage() {
                                             <td className="py-3.5 px-4 font-bold text-sky-400">{product.sellingPrice} SAR</td>
                                             <td className="py-3.5 px-4">
                                                 <span className={`px-2 py-1 rounded-lg font-bold flex items-center gap-1.5 w-fit ${isLow
-                                                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                                    ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                                     }`}>
                                                     {isLow && <AlertTriangle size={12} />}
                                                     {product.stockQuantity} {product.unit}

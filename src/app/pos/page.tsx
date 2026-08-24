@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Image from 'next/image';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
+import api from '@/lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     Store, ShoppingCart, Plus, Minus, CreditCard,
@@ -31,7 +31,6 @@ interface CartItem {
 export default function PosPage() {
     const router = useRouter();
     const [tenantSubdomain, setTenantSubdomain] = useState('');
-    const [token, setToken] = useState('');
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
@@ -66,34 +65,24 @@ export default function PosPage() {
     const [returnReason, setReturnReason] = useState('طلب العميل');
     const [returnLoading, setReturnLoading] = useState(false);
 
-    // مراجع لحظية لتفادي مشكلة الـ Stale Closure
-    const stateRef = useRef({
-        cart,
-        activeShift,
-        products,
-        token,
-        tenantSubdomain,
-        checkoutLoading
-    });
+    // مراجع للباركود والاختصارات
+    const barcodeBufferRef = useRef('');
+    const lastKeyTimeRef = useRef(Date.now());
+    const stateRef = useRef({ cart, activeShift, products, checkoutLoading });
 
     useEffect(() => {
-        stateRef.current = { cart, activeShift, products, token, tenantSubdomain, checkoutLoading };
-    }, [cart, activeShift, products, token, tenantSubdomain, checkoutLoading]);
+        stateRef.current = { cart, activeShift, products, checkoutLoading };
+    }, [cart, activeShift, products, checkoutLoading]);
 
-    const getHeaders = (authToken = token, sub = tenantSubdomain) => ({
-        'Authorization': `Bearer ${authToken}`,
-        'x-tenant-subdomain': sub
-    });
-
-    const fetchData = async (authToken = token, sub = tenantSubdomain) => {
+    const fetchData = async () => {
         try {
             setErrorMessage('');
-            const headers = getHeaders(authToken, sub);
+            const [shiftRes, prodRes] = await Promise.all([
+                api.get('/pos/shifts/current'),
+                api.get('/pos/products')
+            ]);
 
-            const shiftRes = await axios.get('http://localhost:5000/api/v1/pos/shifts/current', { headers });
             setActiveShift(shiftRes.data.data);
-
-            const prodRes = await axios.get('http://localhost:5000/api/v1/pos/products', { headers });
             const prods: Product[] = prodRes.data.data;
             setProducts(prods);
 
@@ -118,13 +107,27 @@ export default function PosPage() {
             return;
         }
 
-        setToken(savedToken);
         setTenantSubdomain(savedSubdomain);
-        fetchData(savedToken, savedSubdomain);
+        fetchData();
     }, []);
 
+    const addToCart = (product: Product) => {
+        if (product.stockQuantity <= 0 || !activeShift) return;
+
+        setCart(prev => {
+            const existing = prev.find(item => item.product._id === product._id);
+            if (existing) {
+                if (existing.quantity >= product.stockQuantity) return prev;
+                return prev.map(item =>
+                    item.product._id === product._id ? { ...item, quantity: item.quantity + 1 } : item
+                );
+            }
+            return [...prev, { product, quantity: 1 }];
+        });
+    };
+
     const handleCheckout = useCallback(async (paymentMethod: 'cash' | 'card') => {
-        const { cart: currentCart, activeShift: currentShift, token: currentToken, tenantSubdomain: currentSub, checkoutLoading: isLoading } = stateRef.current;
+        const { cart: currentCart, activeShift: currentShift, checkoutLoading: isLoading } = stateRef.current;
 
         if (isLoading || currentCart.length === 0 || !currentShift) return;
 
@@ -136,24 +139,15 @@ export default function PosPage() {
         const total = Number((sub + tax).toFixed(2));
 
         try {
-            const res = await axios.post(
-                'http://localhost:5000/api/v1/pos/orders',
-                {
-                    items: currentCart.map(item => ({ productId: item.product._id, quantity: item.quantity })),
-                    paymentMethod,
-                    paidAmount: total
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`,
-                        'x-tenant-subdomain': currentSub
-                    }
-                }
-            );
+            const res = await api.post('/pos/orders', {
+                items: currentCart.map(item => ({ productId: item.product._id, quantity: item.quantity })),
+                paymentMethod,
+                paidAmount: total
+            });
 
             setLastInvoice(res.data.data);
             setCart([]);
-            fetchData(currentToken, currentSub);
+            fetchData();
         } catch (err: any) {
             setErrorMessage(err.response?.data?.error || 'فشلت عملية البيع');
         } finally {
@@ -161,7 +155,7 @@ export default function PosPage() {
         }
     }, []);
 
-    // مستمع اختصارات لوحة المفاتيح
+    // مستمع قارئ الباركود + الاختصارات السريعة
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'F1') {
@@ -185,6 +179,29 @@ export default function PosPage() {
                 setZReportData(null);
                 setCreditNoteData(null);
             }
+
+            // التقاط الباركود
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTimeRef.current > 100) {
+                barcodeBufferRef.current = '';
+            }
+            lastKeyTimeRef.current = currentTime;
+
+            if (e.key === 'Enter') {
+                if (barcodeBufferRef.current.length >= 3) {
+                    const scannedCode = barcodeBufferRef.current.trim();
+                    const foundProduct = stateRef.current.products.find(p => p.barcode === scannedCode);
+                    if (foundProduct && stateRef.current.activeShift) {
+                        addToCart(foundProduct);
+                    }
+                    barcodeBufferRef.current = '';
+                }
+            } else if (e.key.length === 1) {
+                barcodeBufferRef.current += e.key;
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -200,11 +217,10 @@ export default function PosPage() {
     const handleOpenShift = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await axios.post(
-                'http://localhost:5000/api/v1/pos/shifts/open',
-                { cashierName: cashierNameInput, openingCash: Number(openingCashInput) },
-                { headers: getHeaders() }
-            );
+            await api.post('/pos/shifts/open', {
+                cashierName: cashierNameInput,
+                openingCash: Number(openingCashInput)
+            });
             setShowShiftModal(false);
             fetchData();
         } catch (err: any) {
@@ -218,11 +234,11 @@ export default function PosPage() {
         setClosingShiftLoading(true);
 
         try {
-            const res = await axios.post(
-                'http://localhost:5000/api/v1/pos/shifts/close',
-                { shiftId: activeShift._id, actualCash: Number(actualCashInput), notes: shiftNotes },
-                { headers: getHeaders() }
-            );
+            const res = await api.post('/pos/shifts/close', {
+                shiftId: activeShift._id,
+                actualCash: Number(actualCashInput),
+                notes: shiftNotes
+            });
 
             setShowCloseShiftModal(false);
             setActualCashInput('');
@@ -243,11 +259,10 @@ export default function PosPage() {
         setExpenseLoading(true);
 
         try {
-            const res = await axios.post(
-                'http://localhost:5000/api/v1/pos/shifts/expense',
-                { amount: Number(expenseAmount), reason: expenseReason },
-                { headers: getHeaders() }
-            );
+            const res = await api.post('/pos/shifts/expense', {
+                amount: Number(expenseAmount),
+                reason: expenseReason
+            });
 
             setActiveShift(res.data.data);
             setShowExpenseModal(false);
@@ -258,21 +273,6 @@ export default function PosPage() {
         } finally {
             setExpenseLoading(false);
         }
-    };
-
-    const addToCart = (product: Product) => {
-        if (product.stockQuantity <= 0 || !activeShift) return;
-
-        setCart(prev => {
-            const existing = prev.find(item => item.product._id === product._id);
-            if (existing) {
-                if (existing.quantity >= product.stockQuantity) return prev;
-                return prev.map(item =>
-                    item.product._id === product._id ? { ...item, quantity: item.quantity + 1 } : item
-                );
-            }
-            return [...prev, { product, quantity: 1 }];
-        });
     };
 
     const updateQuantity = (productId: string, delta: number) => {
@@ -294,14 +294,11 @@ export default function PosPage() {
     const taxAmount = Number((subtotal * 0.15).toFixed(2));
     const totalAmount = Number((subtotal + taxAmount).toFixed(2));
 
-    // البحث عن الفاتورة للمرتجع
     const handleSearchInvoiceForReturn = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchInvoiceNo) return;
         try {
-            const res = await axios.get(`http://localhost:5000/api/v1/pos/orders/invoice/${searchInvoiceNo.trim()}`, {
-                headers: getHeaders()
-            });
+            const res = await api.get(`/pos/orders/invoice/${searchInvoiceNo.trim()}`);
             setInvoiceToReturn(res.data.data);
             const initialQty: { [id: string]: number } = {};
             res.data.data.items.forEach((it: any) => { initialQty[it.productId] = 0; });
@@ -325,15 +322,11 @@ export default function PosPage() {
 
         setReturnLoading(true);
         try {
-            const res = await axios.post(
-                'http://localhost:5000/api/v1/pos/orders/return',
-                {
-                    originalInvoiceNumber: invoiceToReturn.invoiceNumber,
-                    returnItems,
-                    reason: returnReason
-                },
-                { headers: getHeaders() }
-            );
+            const res = await api.post('/pos/orders/return', {
+                originalInvoiceNumber: invoiceToReturn.invoiceNumber,
+                returnItems,
+                reason: returnReason
+            });
 
             setShowReturnModal(false);
             setInvoiceToReturn(null);
@@ -361,25 +354,16 @@ export default function PosPage() {
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none" dir="rtl">
             {/* Header */}
             <header className="h-16 border-b border-slate-800 bg-slate-900/60 px-6 flex items-center justify-between shrink-0">
-
-                {/* Logo & Brand Name */}
                 <div className="flex items-center gap-3">
-                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center">
-                        <Image
-                            src="/logo.png"
-                            alt="صَرْح Logo"
-                            fill
-                            className="object-cover scale-150"
-                            priority
-                        />
+                    <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-md flex items-center justify-center border border-slate-800">
+                        <Image src="/logo.png" alt="صَرْح" fill className="object-cover scale-150" priority />
                     </div>
                     <div>
-                        <span className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-                            صَرْح <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">Cloud Suite</span>
-                        </span>
-                        <p className="text-[10px] text-slate-400 font-medium">المنظومة السحابية المتكاملة لإدارة الأعمال</p>
+                        <h1 className="text-base font-bold text-white leading-tight">كاشير صَرْح السحابي</h1>
+                        <p className="text-xs text-slate-400 font-mono">{tenantSubdomain}.sarh.cloud</p>
                     </div>
                 </div>
+
                 <div className="flex items-center gap-3">
                     {activeShift ? (
                         <div className="flex items-center gap-2.5 text-xs">
@@ -470,8 +454,8 @@ export default function PosPage() {
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${selectedCategory === cat
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 {cat}
@@ -494,8 +478,8 @@ export default function PosPage() {
                                     key={product._id}
                                     onClick={() => canClick && addToCart(product)}
                                     className={`p-4 rounded-2xl border text-right transition flex flex-col justify-between ${canClick
-                                        ? 'bg-slate-900/60 border-slate-800 hover:border-blue-500 hover:bg-slate-900 cursor-pointer active:scale-95'
-                                        : 'bg-slate-950 border-slate-900 opacity-40 cursor-not-allowed'
+                                            ? 'bg-slate-900/60 border-slate-800 hover:border-blue-500 hover:bg-slate-900 cursor-pointer active:scale-95'
+                                            : 'bg-slate-950 border-slate-900 opacity-40 cursor-not-allowed'
                                         }`}
                                 >
                                     <div>
@@ -958,10 +942,10 @@ export default function PosPage() {
 
                             {actualCashInput !== '' && (
                                 <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between border ${shiftDiff === 0
-                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                    : shiftDiff > 0
-                                        ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
-                                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                        : shiftDiff > 0
+                                            ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
+                                            : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                     }`}>
                                     <span>حالة النقدية:</span>
                                     <span className="font-mono">

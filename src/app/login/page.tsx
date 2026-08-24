@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
 import { Lock, Mail, Store, ArrowLeft, AlertCircle, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -21,21 +21,25 @@ export default function LoginPage() {
         setErrorMessage('');
 
         try {
-            const res = await axios.post('http://localhost:5000/api/v1/auth/login', {
-                email,
-                password
-            });
+            const res = await api.post(
+                '/auth/login',
+                { email, password },
+                {
+                    headers: loginType === 'tenant' ? { 'x-tenant-subdomain': subdomain.trim() } : {}
+                }
+            );
 
-            const { token, data: user } = res.data;
+            const token = res.data.token;
+            const user = res.data.data || res.data.user;
 
             localStorage.setItem('sarh_token', token);
             localStorage.setItem('sarh_user', JSON.stringify(user));
 
             // التوجيه الذكي حسب الدور والنوع المختار
-            if (user.role === 'AFFILIATE' || loginType === 'affiliate') {
+            if (user?.role === 'AFFILIATE' || loginType === 'affiliate') {
                 router.push('/affiliate/dashboard');
             } else {
-                localStorage.setItem('sarh_tenant_subdomain', subdomain);
+                localStorage.setItem('sarh_tenant_subdomain', subdomain.trim());
                 router.push('/pos');
             }
         } catch (err: any) {
@@ -56,8 +60,8 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => setLoginType('tenant')}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${loginType === 'tenant'
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'text-slate-400 hover:text-white'
+                            ? 'bg-blue-600 text-white shadow-lg'
+                            : 'text-slate-400 hover:text-white'
                             }`}
                     >
                         <Store size={14} /> كاشير / منشأة
@@ -66,8 +70,8 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => setLoginType('affiliate')}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${loginType === 'affiliate'
-                                ? 'bg-emerald-600 text-white shadow-lg'
-                                : 'text-slate-400 hover:text-white'
+                            ? 'bg-emerald-600 text-white shadow-lg'
+                            : 'text-slate-400 hover:text-white'
                             }`}
                     >
                         <Users size={14} /> شريك / مسوق
