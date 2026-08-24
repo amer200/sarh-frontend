@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import {
     Store, ShoppingCart, Plus, Minus, CreditCard,
     Banknote, Search, AlertCircle, Clock, KeyRound,
-    LogOut, Printer, X, CheckCircle2, Package, PowerOff, Calculator
+    LogOut, Printer, X, Package, PowerOff,
+    Calculator, Settings, ReceiptText, RotateCcw, BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { BarChart3 } from 'lucide-react';
 
 interface Product {
     _id: string;
@@ -39,34 +41,44 @@ export default function PosPage() {
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
-    // حالة فتح الشيفت
+    // نوافذ
     const [showShiftModal, setShowShiftModal] = useState(false);
     const [openingCashInput, setOpeningCashInput] = useState('100');
     const [cashierNameInput, setCashierNameInput] = useState('كاشير رئيسي');
-
-    // حالة إغلاق الشيفت
     const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
     const [actualCashInput, setActualCashInput] = useState('');
     const [shiftNotes, setShiftNotes] = useState('');
     const [closingShiftLoading, setClosingShiftLoading] = useState(false);
 
-    // حالة الفاتورة والطباعة
+    const [showExpenseModal, setShowExpenseModal] = useState(false);
+    const [expenseAmount, setExpenseAmount] = useState('');
+    const [expenseReason, setExpenseReason] = useState('');
+    const [expenseLoading, setExpenseLoading] = useState(false);
+
     const [lastInvoice, setLastInvoice] = useState<any>(null);
+    const [zReportData, setZReportData] = useState<any>(null);
+    const [creditNoteData, setCreditNoteData] = useState<any>(null);
 
-    // التحقق من المصادقة والجلسة
+    const [showReturnModal, setShowReturnModal] = useState(false);
+    const [searchInvoiceNo, setSearchInvoiceNo] = useState('');
+    const [invoiceToReturn, setInvoiceToReturn] = useState<any>(null);
+    const [returnQuantities, setReturnQuantities] = useState<{ [productId: string]: number }>({});
+    const [returnReason, setReturnReason] = useState('طلب العميل');
+    const [returnLoading, setReturnLoading] = useState(false);
+
+    // مراجع لحظية لتفادي مشكلة الـ Stale Closure
+    const stateRef = useRef({
+        cart,
+        activeShift,
+        products,
+        token,
+        tenantSubdomain,
+        checkoutLoading
+    });
+
     useEffect(() => {
-        const savedToken = localStorage.getItem('sarh_token');
-        const savedSubdomain = localStorage.getItem('sarh_tenant_subdomain') || 'alsarh-express';
-
-        if (!savedToken) {
-            router.push('/login');
-            return;
-        }
-
-        setToken(savedToken);
-        setTenantSubdomain(savedSubdomain);
-        fetchData(savedToken, savedSubdomain);
-    }, []);
+        stateRef.current = { cart, activeShift, products, token, tenantSubdomain, checkoutLoading };
+    }, [cart, activeShift, products, token, tenantSubdomain, checkoutLoading]);
 
     const getHeaders = (authToken = token, sub = tenantSubdomain) => ({
         'Authorization': `Bearer ${authToken}`,
@@ -97,6 +109,88 @@ export default function PosPage() {
         }
     };
 
+    useEffect(() => {
+        const savedToken = localStorage.getItem('sarh_token');
+        const savedSubdomain = localStorage.getItem('sarh_tenant_subdomain') || 'alsarh-express';
+
+        if (!savedToken) {
+            router.push('/login');
+            return;
+        }
+
+        setToken(savedToken);
+        setTenantSubdomain(savedSubdomain);
+        fetchData(savedToken, savedSubdomain);
+    }, []);
+
+    const handleCheckout = useCallback(async (paymentMethod: 'cash' | 'card') => {
+        const { cart: currentCart, activeShift: currentShift, token: currentToken, tenantSubdomain: currentSub, checkoutLoading: isLoading } = stateRef.current;
+
+        if (isLoading || currentCart.length === 0 || !currentShift) return;
+
+        setCheckoutLoading(true);
+        setErrorMessage('');
+
+        const sub = currentCart.reduce((s, it) => s + it.product.sellingPrice * it.quantity, 0);
+        const tax = Number((sub * 0.15).toFixed(2));
+        const total = Number((sub + tax).toFixed(2));
+
+        try {
+            const res = await axios.post(
+                'http://localhost:5000/api/v1/pos/orders',
+                {
+                    items: currentCart.map(item => ({ productId: item.product._id, quantity: item.quantity })),
+                    paymentMethod,
+                    paidAmount: total
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'x-tenant-subdomain': currentSub
+                    }
+                }
+            );
+
+            setLastInvoice(res.data.data);
+            setCart([]);
+            fetchData(currentToken, currentSub);
+        } catch (err: any) {
+            setErrorMessage(err.response?.data?.error || 'فشلت عملية البيع');
+        } finally {
+            setCheckoutLoading(false);
+        }
+    }, []);
+
+    // مستمع اختصارات لوحة المفاتيح
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'F1') {
+                e.preventDefault();
+                handleCheckout('cash');
+            } else if (e.key === 'F2') {
+                e.preventDefault();
+                handleCheckout('card');
+            } else if (e.key === 'F3') {
+                e.preventDefault();
+                if (stateRef.current.activeShift) setShowExpenseModal(true);
+            } else if (e.key === 'F4') {
+                e.preventDefault();
+                if (stateRef.current.activeShift) setShowReturnModal(true);
+            } else if (e.key === 'Escape') {
+                setShowShiftModal(false);
+                setShowCloseShiftModal(false);
+                setShowExpenseModal(false);
+                setShowReturnModal(false);
+                setLastInvoice(null);
+                setZReportData(null);
+                setCreditNoteData(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleCheckout]);
+
     const handleLogout = () => {
         localStorage.removeItem('sarh_token');
         localStorage.removeItem('sarh_user');
@@ -108,10 +202,7 @@ export default function PosPage() {
         try {
             await axios.post(
                 'http://localhost:5000/api/v1/pos/shifts/open',
-                {
-                    cashierName: cashierNameInput,
-                    openingCash: Number(openingCashInput)
-                },
+                { cashierName: cashierNameInput, openingCash: Number(openingCashInput) },
                 { headers: getHeaders() }
             );
             setShowShiftModal(false);
@@ -127,13 +218,9 @@ export default function PosPage() {
         setClosingShiftLoading(true);
 
         try {
-            await axios.post(
+            const res = await axios.post(
                 'http://localhost:5000/api/v1/pos/shifts/close',
-                {
-                    shiftId: activeShift._id,
-                    actualCash: Number(actualCashInput),
-                    notes: shiftNotes
-                },
+                { shiftId: activeShift._id, actualCash: Number(actualCashInput), notes: shiftNotes },
                 { headers: getHeaders() }
             );
 
@@ -141,11 +228,35 @@ export default function PosPage() {
             setActualCashInput('');
             setShiftNotes('');
             setActiveShift(null);
+            setZReportData(res.data.data);
             fetchData();
         } catch (err: any) {
             setErrorMessage(err.response?.data?.error || 'فشل في إغلاق الشيفت');
         } finally {
             setClosingShiftLoading(false);
+        }
+    };
+
+    const handleAddExpense = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!activeShift) return;
+        setExpenseLoading(true);
+
+        try {
+            const res = await axios.post(
+                'http://localhost:5000/api/v1/pos/shifts/expense',
+                { amount: Number(expenseAmount), reason: expenseReason },
+                { headers: getHeaders() }
+            );
+
+            setActiveShift(res.data.data);
+            setShowExpenseModal(false);
+            setExpenseAmount('');
+            setExpenseReason('');
+        } catch (err: any) {
+            setErrorMessage(err.response?.data?.error || 'فشل في تسجيل المصروف');
+        } finally {
+            setExpenseLoading(false);
         }
     };
 
@@ -183,32 +294,56 @@ export default function PosPage() {
     const taxAmount = Number((subtotal * 0.15).toFixed(2));
     const totalAmount = Number((subtotal + taxAmount).toFixed(2));
 
-    const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
-        if (cart.length === 0 || !activeShift) return;
-        setCheckoutLoading(true);
-        setErrorMessage('');
+    // البحث عن الفاتورة للمرتجع
+    const handleSearchInvoiceForReturn = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!searchInvoiceNo) return;
+        try {
+            const res = await axios.get(`http://localhost:5000/api/v1/pos/orders/invoice/${searchInvoiceNo.trim()}`, {
+                headers: getHeaders()
+            });
+            setInvoiceToReturn(res.data.data);
+            const initialQty: { [id: string]: number } = {};
+            res.data.data.items.forEach((it: any) => { initialQty[it.productId] = 0; });
+            setReturnQuantities(initialQty);
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'لم يتم العثور على الفاتورة أو تم إرجاعها مسبقاً');
+            setInvoiceToReturn(null);
+        }
+    };
 
+    const handleProcessReturn = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const returnItems = Object.entries(returnQuantities)
+            .filter(([_, qty]) => qty > 0)
+            .map(([productId, quantity]) => ({ productId, quantity }));
+
+        if (returnItems.length === 0) {
+            alert('يرجى تحديد كمية صنف واحد على الأقل للإرجاع');
+            return;
+        }
+
+        setReturnLoading(true);
         try {
             const res = await axios.post(
-                'http://localhost:5000/api/v1/pos/orders',
+                'http://localhost:5000/api/v1/pos/orders/return',
                 {
-                    items: cart.map(item => ({
-                        productId: item.product._id,
-                        quantity: item.quantity
-                    })),
-                    paymentMethod,
-                    paidAmount: totalAmount
+                    originalInvoiceNumber: invoiceToReturn.invoiceNumber,
+                    returnItems,
+                    reason: returnReason
                 },
                 { headers: getHeaders() }
             );
 
-            setLastInvoice(res.data.data);
-            setCart([]);
+            setShowReturnModal(false);
+            setInvoiceToReturn(null);
+            setSearchInvoiceNo('');
+            setCreditNoteData(res.data.data);
             fetchData();
         } catch (err: any) {
-            setErrorMessage(err.response?.data?.error || 'فشلت عملية البيع');
+            alert(err.response?.data?.error || 'فشل في إتمام المرتجع');
         } finally {
-            setCheckoutLoading(false);
+            setReturnLoading(false);
         }
     };
 
@@ -218,7 +353,6 @@ export default function PosPage() {
         return matchCat && matchSearch;
     });
 
-    // حساب الفرق المالي اللحظي أثناء إغلاق الشيفت
     const actualCashNum = Number(actualCashInput) || 0;
     const expectedCashNum = activeShift ? activeShift.expectedCash : 0;
     const shiftDiff = actualCashNum - expectedCashNum;
@@ -227,31 +361,49 @@ export default function PosPage() {
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none" dir="rtl">
             {/* Header */}
             <header className="h-16 border-b border-slate-800 bg-slate-900/60 px-6 flex items-center justify-between shrink-0">
+
+                {/* Logo & Brand Name */}
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
-                        <Store size={20} />
+                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center">
+                        <Image
+                            src="/logo.png"
+                            alt="صَرْح Logo"
+                            fill
+                            className="object-cover scale-150"
+                            priority
+                        />
                     </div>
                     <div>
-                        <h1 className="text-base font-bold text-white leading-tight">كاشير نقاط البيع السحابي</h1>
-                        <p className="text-xs text-slate-400 font-mono">{tenantSubdomain}.sarh.cloud</p>
+                        <span className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                            صَرْح <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">Cloud Suite</span>
+                        </span>
+                        <p className="text-[10px] text-slate-400 font-medium">المنظومة السحابية المتكاملة لإدارة الأعمال</p>
                     </div>
                 </div>
-
                 <div className="flex items-center gap-3">
                     {activeShift ? (
-                        <div className="flex items-center gap-3 text-xs">
+                        <div className="flex items-center gap-2.5 text-xs">
                             <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
                                 <Clock size={14} className="text-emerald-400" />
                                 <span className="text-slate-400">الشيفت:</span>
                                 <span className="font-mono text-emerald-400 font-bold">{activeShift.shiftNumber}</span>
                                 <span className="text-slate-500">({activeShift.cashierName})</span>
                             </div>
-                            <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                                <span className="text-slate-400">المبيعات: </span>
-                                <span className="font-mono text-white font-bold">{(activeShift.cashSales + activeShift.cardSales).toFixed(2)} SAR</span>
-                            </div>
 
-                            {/* زر تقفيل الشيفت */}
+                            <button
+                                onClick={() => setShowReturnModal(true)}
+                                className="bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition"
+                            >
+                                <RotateCcw size={14} /> مرتجع <kbd className="text-[10px] font-mono opacity-60">F4</kbd>
+                            </button>
+
+                            <button
+                                onClick={() => setShowExpenseModal(true)}
+                                className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition"
+                            >
+                                <ReceiptText size={14} /> مصروف <kbd className="text-[10px] font-mono opacity-60">F3</kbd>
+                            </button>
+
                             <button
                                 onClick={() => {
                                     setActualCashInput(activeShift.expectedCash.toString());
@@ -271,37 +423,38 @@ export default function PosPage() {
                         </Button>
                     )}
 
-                    {/* زر المخزن */}
                     <Link
                         href="/pos/inventory"
-                        title="إدارة المخزن"
-                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition flex items-center gap-1.5 text-xs font-semibold"
+                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-blue-400 transition flex items-center gap-1.5 text-xs font-semibold"
                     >
                         <Package size={16} /> المخزن
                     </Link>
                     <Link
                         href="/pos/reports"
-                        title="تقارير المبيعات"
-                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/40 transition flex items-center gap-1.5 text-xs font-semibold"
+                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-emerald-400 transition flex items-center gap-1.5 text-xs font-semibold"
                     >
                         <BarChart3 size={16} /> التقارير
                     </Link>
-                    {/* زر الخروج */}
+                    <Link
+                        href="/pos/settings"
+                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white transition flex items-center gap-1.5 text-xs font-semibold"
+                    >
+                        <Settings size={16} /> الإعدادات
+                    </Link>
+
                     <button
                         onClick={handleLogout}
-                        title="تسجيل الخروج"
-                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition"
+                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 transition"
                     >
                         <LogOut size={16} />
                     </button>
                 </div>
             </header>
 
-            {/* Main Workspace */}
+            {/* Workspace */}
             <div className="flex-1 flex overflow-hidden">
-                {/* المنتجات */}
                 <div className="flex-1 flex flex-col p-6 overflow-hidden">
-                    <div className="flex gap-3 mb-4 shrink-0">
+                    <div className="flex gap-3 mb-4 shrink-0 items-center">
                         <div className="relative flex-1">
                             <Search className="absolute right-3.5 top-3 text-slate-500" size={18} />
                             <input
@@ -365,7 +518,7 @@ export default function PosPage() {
                     </div>
                 </div>
 
-                {/* سلة الفاتورة الجانبية */}
+                {/* Cart */}
                 <div className="w-96 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -435,21 +588,217 @@ export default function PosPage() {
                                 disabled={cart.length === 0 || !activeShift || checkoutLoading}
                                 className="bg-emerald-600 hover:bg-emerald-500 py-3 text-xs font-bold flex items-center justify-center gap-1.5"
                             >
-                                <Banknote size={16} /> دفع كاش
+                                <Banknote size={16} /> {checkoutLoading ? 'جارٍ...' : 'كاش'} <kbd className="bg-emerald-800/80 px-1.5 py-0.5 rounded text-[10px] font-mono">F1</kbd>
                             </Button>
                             <Button
                                 onClick={() => handleCheckout('card')}
                                 disabled={cart.length === 0 || !activeShift || checkoutLoading}
                                 className="bg-blue-600 hover:bg-blue-500 py-3 text-xs font-bold flex items-center justify-center gap-1.5"
                             >
-                                <CreditCard size={16} /> دفع شبكة / مدى
+                                <CreditCard size={16} /> {checkoutLoading ? 'جارٍ...' : 'شبكة'} <kbd className="bg-blue-800/80 px-1.5 py-0.5 rounded text-[10px] font-mono">F2</kbd>
                             </Button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* نافذة فتح الشيفت */}
+            {/* Return Modal */}
+            {showReturnModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl">
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <RotateCcw size={18} className="text-indigo-400" />
+                                <h3 className="text-base font-bold text-white">إرجاع فاتورة وإصدار إشعار دائن</h3>
+                            </div>
+                            <button onClick={() => setShowReturnModal(false)} className="text-slate-400 hover:text-white">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSearchInvoiceForReturn} className="flex gap-2 mb-4">
+                            <input
+                                type="text"
+                                required
+                                placeholder="أدخل رقم الفاتورة (مثال: POS-123456)..."
+                                value={searchInvoiceNo}
+                                onChange={e => setSearchInvoiceNo(e.target.value)}
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                            />
+                            <Button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-xs py-2 px-4 font-bold">
+                                بحث
+                            </Button>
+                        </form>
+
+                        {invoiceToReturn && (
+                            <form onSubmit={handleProcessReturn} className="space-y-4">
+                                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs space-y-1">
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">تاريخ الفاتورة:</span>
+                                        <span>{new Date(invoiceToReturn.createdAt).toLocaleString('en-US')}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">طريقة الدفع الأصلية:</span>
+                                        <span className="uppercase font-mono text-indigo-400">{invoiceToReturn.financials?.paymentMethod}</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    <p className="text-xs text-slate-400 font-semibold">الأصناف المتبقية المتاحة للإرجاع:</p>
+                                    {invoiceToReturn.items?.map((it: any) => (
+                                        <div key={it.productId} className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800/80 rounded-xl text-xs">
+                                            <div>
+                                                <p className="font-bold text-white">{it.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-mono">
+                                                    المتاح للإرجاع: <b className="text-indigo-400">{it.remainingQuantity}</b> من أصل {it.quantity}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] text-slate-400">المرجع:</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={it.remainingQuantity}
+                                                    disabled={it.remainingQuantity <= 0}
+                                                    value={returnQuantities[it.productId] || 0}
+                                                    onChange={e => setReturnQuantities({
+                                                        ...returnQuantities,
+                                                        [it.productId]: Math.min(it.remainingQuantity, Math.max(0, Number(e.target.value)))
+                                                    })}
+                                                    className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-mono text-white text-xs focus:outline-none focus:border-indigo-500 disabled:opacity-30"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 block mb-1">سبب الإرجاع:</label>
+                                    <input
+                                        type="text"
+                                        value={returnReason}
+                                        onChange={e => setReturnReason(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                    <Button
+                                        type="submit"
+                                        disabled={returnLoading}
+                                        className="flex-1 py-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-500"
+                                    >
+                                        {returnLoading ? 'جارٍ معالجة الإرجاع...' : 'تأكيد الإرجاع وإصدار الإشعار الدائن'}
+                                    </Button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowReturnModal(false)}
+                                        className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl"
+                                    >
+                                        إلغاء
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Credit Note Receipt Modal */}
+            {creditNoteData && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white font-sans text-slate-900">
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh] print:shadow-none print:max-h-none print:w-full">
+                        <button
+                            onClick={() => setCreditNoteData(null)}
+                            className="absolute left-4 top-4 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition print:hidden"
+                        >
+                            <X size={16} />
+                        </button>
+
+                        <div className="text-center pb-3 border-b-2 border-slate-900 font-mono">
+                            <h2 className="font-bold text-base text-slate-900 font-sans">{creditNoteData.tenantInfo?.name}</h2>
+                            <p className="text-[10px] text-slate-500 mt-0.5">الرقم الضريبي: {creditNoteData.tenantInfo?.vatNumber}</p>
+                            <div className="mt-2 inline-block bg-rose-600 text-white text-[11px] font-bold px-3 py-1 rounded">
+                                إشعار دائن ضريبي (CREDIT NOTE)
+                            </div>
+                        </div>
+
+                        <div className="py-2.5 text-xs space-y-1 border-b border-dashed border-slate-300 font-mono">
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">رقم الإشعار الدائن:</span>
+                                <span className="font-bold text-rose-600">{creditNoteData.creditNoteNumber}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">مرجع الفاتورة الأصلية:</span>
+                                <span className="font-bold">{creditNoteData.originalInvoiceNumber}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">التاريخ:</span>
+                                <span>{new Date(creditNoteData.createdAt).toLocaleString('en-US')}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">سبب الإرجاع:</span>
+                                <span className="font-sans">{creditNoteData.reason}</span>
+                            </div>
+                        </div>
+
+                        <div className="py-2.5 flex-1 overflow-y-auto space-y-1 border-b border-dashed border-slate-300 text-xs">
+                            <div className="grid grid-cols-12 font-bold text-slate-500 pb-1">
+                                <span className="col-span-6">الصنف المرجع</span>
+                                <span className="col-span-2 text-center">الكمية</span>
+                                <span className="col-span-4 text-left">المبلغ المسترد</span>
+                            </div>
+                            {creditNoteData.items?.map((it: any, idx: number) => (
+                                <div key={idx} className="grid grid-cols-12 items-center py-0.5">
+                                    <span className="col-span-6 truncate font-medium">{it.name}</span>
+                                    <span className="col-span-2 text-center font-mono">-{it.quantity}</span>
+                                    <span className="col-span-4 text-left font-mono">-{it.totalPrice.toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
+                            <div className="flex justify-between text-slate-600">
+                                <span className="font-sans">المجموع الفرعي المسترد:</span>
+                                <span>-{creditNoteData.financials?.subtotal.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                                <span className="font-sans">ضريبة القيمة المضافة المستردة (15%):</span>
+                                <span>-{creditNoteData.financials?.taxAmount.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-sm text-rose-600 pt-1.5 border-t border-slate-200">
+                                <span className="font-sans">إجمالي المبلغ المسترد:</span>
+                                <span>-{creditNoteData.financials?.totalRefundAmount.toFixed(2)} SAR</span>
+                            </div>
+                        </div>
+
+                        <div className="py-3 text-center flex flex-col items-center justify-center">
+                            <div className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm inline-block">
+                                <QRCodeSVG value={creditNoteData.zatcaQr} size={100} level="M" />
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-2">إشعار دائن ضريبي معتمد (ZATCA Compliant)</p>
+                        </div>
+
+                        <div className="flex gap-2 print:hidden pt-1">
+                            <Button
+                                onClick={() => window.print()}
+                                className="flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white"
+                            >
+                                <Printer size={16} /> طباعة الإشعار الدائن
+                            </Button>
+                            <button
+                                onClick={() => setCreditNoteData(null)}
+                                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                            >
+                                إغلاق
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Shift Open Modal */}
             {showShiftModal && (
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
@@ -496,7 +845,67 @@ export default function PosPage() {
                 </div>
             )}
 
-            {/* نافذة إغلاق الشيفت ومطابقة النقدية (Shift Close Modal) */}
+            {/* Expense Modal */}
+            {showExpenseModal && activeShift && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <ReceiptText size={18} className="text-amber-400" />
+                                <h3 className="text-base font-bold text-white">تسجيل سحب / مصروف نثري</h3>
+                            </div>
+                            <span className="text-xs text-slate-400 font-mono">{activeShift.shiftNumber}</span>
+                        </div>
+
+                        <form onSubmit={handleAddExpense} className="space-y-4">
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-1">المبلغ المسحوب من الدرج (SAR):</label>
+                                <input
+                                    type="number"
+                                    required
+                                    step="0.01"
+                                    min="0.01"
+                                    placeholder="0.00"
+                                    value={expenseAmount}
+                                    onChange={e => setExpenseAmount(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-1">سبب / بيان المصروف:</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="مثال: شراء أدوات نظافة / بوفيه"
+                                    value={expenseReason}
+                                    onChange={e => setExpenseReason(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                                />
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                                <Button
+                                    type="submit"
+                                    disabled={expenseLoading}
+                                    className="flex-1 py-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950"
+                                >
+                                    {expenseLoading ? 'جارٍ الحفظ...' : 'تأكيد وخصم من الدرج'}
+                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowExpenseModal(false)}
+                                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition"
+                                >
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Shift Close Modal */}
             {showCloseShiftModal && activeShift && (
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl">
@@ -508,7 +917,6 @@ export default function PosPage() {
                             <span className="text-xs text-slate-400 font-mono">{activeShift.shiftNumber}</span>
                         </div>
 
-                        {/* ملخص أرقام الشيفت */}
                         <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 text-xs font-mono mb-4">
                             <div className="flex justify-between text-slate-400">
                                 <span>عهدة بداية الدرج:</span>
@@ -522,6 +930,12 @@ export default function PosPage() {
                                 <span>مبيعات الشبكة / مدى:</span>
                                 <span className="text-blue-400">{activeShift.cardSales.toFixed(2)} SAR</span>
                             </div>
+                            {activeShift.expenses?.length > 0 && (
+                                <div className="flex justify-between text-amber-400">
+                                    <span>المصروفات النثرية (-):</span>
+                                    <span>-{activeShift.expenses.reduce((s: number, x: any) => s + x.amount, 0).toFixed(2)} SAR</span>
+                                </div>
+                            )}
                             <div className="flex justify-between text-slate-300 font-bold pt-2 border-t border-slate-800 text-sm">
                                 <span>الكاش المتوقع في الدرج:</span>
                                 <span className="text-sky-400">{activeShift.expectedCash.toFixed(2)} SAR</span>
@@ -542,7 +956,6 @@ export default function PosPage() {
                                 />
                             </div>
 
-                            {/* مؤشر الفائض / العجز اللحظي */}
                             {actualCashInput !== '' && (
                                 <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between border ${shiftDiff === 0
                                     ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
@@ -591,10 +1004,10 @@ export default function PosPage() {
                 </div>
             )}
 
-            {/* نافذة الفاتورة والطباعة الحرارية */}
+            {/* Invoice Receipt Modal */}
             {lastInvoice && (
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
-                    <div className="bg-white text-slate-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh] print:shadow-none print:max-h-none print:w-full">
+                    <div className="bg-white text-slate-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh] print:shadow-none print:max-h-none print:w-full font-sans">
                         <button
                             onClick={() => setLastInvoice(null)}
                             className="absolute left-4 top-4 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition print:hidden"
@@ -602,41 +1015,50 @@ export default function PosPage() {
                             <X size={16} />
                         </button>
 
-                        <div className="text-center pb-4 border-b border-dashed border-slate-300">
-                            <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2 print:hidden">
-                                <CheckCircle2 size={22} />
+                        <div className="text-center pb-3 border-b border-dashed border-slate-300">
+                            <h3 className="font-bold text-base text-slate-900 leading-snug">
+                                {lastInvoice.tenantInfo?.name || 'مؤسسة صَرْح التجارية'}
+                            </h3>
+                            {lastInvoice.tenantInfo?.address && (
+                                <p className="text-[11px] text-slate-500 mt-0.5">{lastInvoice.tenantInfo.address}</p>
+                            )}
+                            {lastInvoice.tenantInfo?.vatNumber && (
+                                <p className="text-[11px] text-slate-600 font-mono mt-1 font-semibold">
+                                    الرقم الضريبي: {lastInvoice.tenantInfo.vatNumber}
+                                </p>
+                            )}
+                            <div className="mt-1 inline-block px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600">
+                                فاتورة ضريبية مبسطة
                             </div>
-                            <h3 className="font-bold text-base">فاتورة ضريبية مبسطة</h3>
-                            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{tenantSubdomain}.sarh.cloud</p>
                         </div>
 
-                        <div className="py-3 text-xs space-y-1.5 border-b border-dashed border-slate-300 font-mono">
+                        <div className="py-2.5 text-xs space-y-1 border-b border-dashed border-slate-300 font-mono">
                             <div className="flex justify-between">
-                                <span className="text-slate-500">رقم الفاتورة:</span>
+                                <span className="text-slate-500 font-sans">رقم الفاتورة:</span>
                                 <span className="font-bold">{lastInvoice.invoiceNumber}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-500">التاريخ:</span>
+                                <span className="text-slate-500 font-sans">التاريخ:</span>
                                 <span>{new Date(lastInvoice.createdAt).toLocaleString('en-US')}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-500">الكاشير:</span>
-                                <span>{lastInvoice.cashierName}</span>
+                                <span className="text-slate-500 font-sans">الكاشير:</span>
+                                <span className="font-sans">{lastInvoice.cashierName}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-500">طريقة الدفع:</span>
+                                <span className="text-slate-500 font-sans">طريقة الدفع:</span>
                                 <span className="uppercase">{lastInvoice.financials?.paymentMethod}</span>
                             </div>
                         </div>
 
-                        <div className="py-3 flex-1 overflow-y-auto space-y-2 border-b border-dashed border-slate-300 text-xs">
+                        <div className="py-2.5 flex-1 overflow-y-auto space-y-1.5 border-b border-dashed border-slate-300 text-xs">
                             <div className="grid grid-cols-12 font-bold text-slate-500 pb-1 border-b border-slate-100">
                                 <span className="col-span-6">الصنف</span>
                                 <span className="col-span-2 text-center">الكمية</span>
                                 <span className="col-span-4 text-left">المبلغ</span>
                             </div>
                             {lastInvoice.items?.map((item: any, idx: number) => (
-                                <div key={idx} className="grid grid-cols-12 items-center py-1">
+                                <div key={idx} className="grid grid-cols-12 items-center py-0.5">
                                     <span className="col-span-6 truncate font-medium">{item.name}</span>
                                     <span className="col-span-2 text-center font-mono">{item.quantity}</span>
                                     <span className="col-span-4 text-left font-mono">{item.totalPrice.toFixed(2)}</span>
@@ -644,29 +1066,33 @@ export default function PosPage() {
                             ))}
                         </div>
 
-                        <div className="py-3 space-y-1.5 text-xs border-b border-dashed border-slate-300 font-mono">
-                            <div className="flex justify-between text-slate-600">
+                        <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
+                            <div className="flex justify-between text-slate-600 font-sans">
                                 <span>المجموع الفرعي:</span>
                                 <span>{lastInvoice.financials?.subtotal.toFixed(2)} SAR</span>
                             </div>
-                            <div className="flex justify-between text-slate-600">
+                            <div className="flex justify-between text-slate-600 font-sans">
                                 <span>ضريبة القيمة المضافة (15%):</span>
                                 <span>{lastInvoice.financials?.taxAmount.toFixed(2)} SAR</span>
                             </div>
-                            <div className="flex justify-between text-sm font-bold text-slate-900 pt-2 border-t border-slate-200">
+                            <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200 font-sans">
                                 <span>الإجمالي النهائي:</span>
-                                <span>{lastInvoice.financials?.totalAmount.toFixed(2)} SAR</span>
+                                <span className="font-mono text-base">{lastInvoice.financials?.totalAmount.toFixed(2)} SAR</span>
                             </div>
                         </div>
 
-                        <div className="py-4 text-center">
-                            <div className="w-24 h-24 mx-auto bg-slate-900 text-white flex items-center justify-center rounded-xl font-mono text-[9px] p-2 leading-tight">
-                                [ QR Code ]<br />ZATCA Compliant
-                            </div>
-                            <p className="text-[10px] text-slate-400 mt-2">شكراً لزيارتكم - تم الإصدار إلكترونياً</p>
+                        <div className="py-3 text-center flex flex-col items-center justify-center">
+                            {lastInvoice.zatcaQr ? (
+                                <div className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm inline-block">
+                                    <QRCodeSVG value={lastInvoice.zatcaQr} size={105} level="M" includeMargin={false} />
+                                </div>
+                            ) : null}
+                            <p className="text-[10px] text-slate-500 mt-2 font-sans font-medium px-2 leading-relaxed">
+                                {lastInvoice.tenantInfo?.receiptFooter || 'شكراً لزيارتكم - تم الإصدار إلكترونياً'}
+                            </p>
                         </div>
 
-                        <div className="flex gap-2 print:hidden pt-2">
+                        <div className="flex gap-2 print:hidden pt-1">
                             <Button
                                 onClick={() => window.print()}
                                 className="flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white"
@@ -676,6 +1102,113 @@ export default function PosPage() {
                             <button
                                 onClick={() => setLastInvoice(null)}
                                 className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                            >
+                                إغلاق
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Z-Report Modal */}
+            {zReportData && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white font-sans text-slate-900">
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh] print:shadow-none print:max-h-none print:w-full">
+                        <button
+                            onClick={() => setZReportData(null)}
+                            className="absolute left-4 top-4 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition print:hidden"
+                        >
+                            <X size={16} />
+                        </button>
+
+                        <div className="text-center pb-3 border-b-2 border-slate-900 font-mono">
+                            <h2 className="font-bold text-base text-slate-900 font-sans">{zReportData.tenantInfo?.name}</h2>
+                            <p className="text-[10px] text-slate-500 mt-0.5">الرقم الضريبي: {zReportData.tenantInfo?.vatNumber}</p>
+                            <div className="mt-2 inline-block bg-slate-900 text-white text-[11px] font-bold px-3 py-1 rounded">
+                                تقرير إغلاق الوردية (Z - REPORT)
+                            </div>
+                        </div>
+
+                        <div className="py-2.5 text-xs space-y-1 border-b border-dashed border-slate-300 font-mono">
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">رقم الشيفت:</span>
+                                <span className="font-bold">{zReportData.shiftDetails?.shiftNumber}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 font-sans">الكاشير:</span>
+                                <span className="font-sans font-medium">{zReportData.shiftDetails?.cashierName}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px]">
+                                <span className="text-slate-500 font-sans">وقت الفتح:</span>
+                                <span>{new Date(zReportData.shiftDetails?.openedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px]">
+                                <span className="text-slate-500 font-sans">وقت الإغلاق:</span>
+                                <span>{new Date(zReportData.shiftDetails?.closedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                            </div>
+                        </div>
+
+                        <div className="py-2.5 space-y-1.5 border-b border-dashed border-slate-300 text-xs font-mono">
+                            <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">ملخص المبيعات:</div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600 font-sans">مبيعات نقدية (كاش):</span>
+                                <span>{zReportData.financialSummary?.cashSales.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600 font-sans">مبيعات شبكة / مدى:</span>
+                                <span>{zReportData.financialSummary?.cardSales.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600 font-sans">ضريبة القيمة المضافة (15%):</span>
+                                <span>{zReportData.financialSummary?.totalTax.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-100">
+                                <span className="font-sans">إجمالي مبيعات الوردية:</span>
+                                <span>{zReportData.financialSummary?.totalSales.toFixed(2)} SAR</span>
+                            </div>
+                        </div>
+
+                        <div className="py-2.5 space-y-1.5 border-b-2 border-slate-900 text-xs font-mono">
+                            <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">جرد ومطابقة صندوق الدرج:</div>
+                            <div className="flex justify-between text-slate-600">
+                                <span className="font-sans">عهدة البداية:</span>
+                                <span>+{zReportData.financialSummary?.openingCash.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                                <span className="font-sans">مبيعات الكاش المضافة:</span>
+                                <span>+{zReportData.financialSummary?.cashSales.toFixed(2)} SAR</span>
+                            </div>
+                            {zReportData.financialSummary?.totalExpenses > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                    <span className="font-sans">المصروفات النثرية:</span>
+                                    <span>-{zReportData.financialSummary?.totalExpenses.toFixed(2)} SAR</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
+                                <span className="font-sans">الكاش المتوقع:</span>
+                                <span>{zReportData.financialSummary?.expectedCash.toFixed(2)} SAR</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-slate-900">
+                                <span className="font-sans">الكاش الفعلي المستلم:</span>
+                                <span>{zReportData.financialSummary?.actualCash.toFixed(2)} SAR</span>
+                            </div>
+                            <div className={`flex justify-between font-bold text-xs pt-1 border-t border-slate-200 ${zReportData.financialSummary?.difference === 0 ? 'text-emerald-600' : 'text-rose-600'
+                                }`}>
+                                <span className="font-sans">الفارق:</span>
+                                <span>{zReportData.financialSummary?.difference.toFixed(2)} SAR</span>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 print:hidden pt-3 border-t border-slate-100">
+                            <Button
+                                onClick={() => window.print()}
+                                className="flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white"
+                            >
+                                <Printer size={16} /> طباعة تقرير Z-Report
+                            </Button>
+                            <button
+                                onClick={() => setZReportData(null)}
+                                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
                             >
                                 إغلاق
                             </button>
