@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -24,7 +24,7 @@ export default function AffiliateRegisterPage() {
         setIsSubmitting(true);
         setErrorMsg('');
         try {
-            const res = await axios.post('http://localhost:5000/api/v1/affiliates/register', formData);
+            const res = await api.post('/affiliates/register', formData);
             setSuccessData(res.data.data);
         } catch (err: any) {
             setErrorMsg(err.response?.data?.error || 'حدث خطأ أثناء تسجيل المسوق');
