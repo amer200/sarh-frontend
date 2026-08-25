@@ -13,6 +13,8 @@ import {
     Calculator, Settings, ReceiptText, RotateCcw, BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import SubscriptionModal from '@/components/SubscriptionModal';
+import { ShieldAlert } from 'lucide-react';
 
 interface Product {
     _id: string;
@@ -69,7 +71,10 @@ export default function PosPage() {
     const barcodeBufferRef = useRef('');
     const lastKeyTimeRef = useRef(Date.now());
     const stateRef = useRef({ cart, activeShift, products, checkoutLoading });
-
+    // حالات الاشتراك
+    const [subStatus, setSubStatus] = useState<'trial' | 'expired' | 'pending_approval' | 'active'>('trial');
+    const [daysLeft, setDaysLeft] = useState<number>(7);
+    const [showSubModal, setShowSubModal] = useState<boolean>(false);
     useEffect(() => {
         stateRef.current = { cart, activeShift, products, checkoutLoading };
     }, [cart, activeShift, products, checkoutLoading]);
@@ -77,9 +82,10 @@ export default function PosPage() {
     const fetchData = async () => {
         try {
             setErrorMessage('');
-            const [shiftRes, prodRes] = await Promise.all([
+            const [shiftRes, prodRes, subRes] = await Promise.all([
                 api.get('/pos/shifts/current'),
-                api.get('/pos/products')
+                api.get('/pos/products'),
+                api.get('/subscriptions/status').catch(() => ({ data: { data: null } }))
             ]);
 
             setActiveShift(shiftRes.data.data);
@@ -88,6 +94,27 @@ export default function PosPage() {
 
             const cats = Array.from(new Set(prods.map(p => p.category || 'عام')));
             setCategories(['الكل', ...cats]);
+
+            // معالجة حالة الاشتراك
+            if (subRes.data?.data) {
+                const sub = subRes.data.data.subscription;
+                const isBlocked = subRes.data.data.isBlocked;
+                const currentStatus = isBlocked ? 'expired' : (sub?.status || 'trial');
+
+                setSubStatus(currentStatus);
+
+                // حساب الأيام المتبقية في التجربة
+                if (sub?.trialEndsAt) {
+                    const diffMs = new Date(sub.trialEndsAt).getTime() - Date.now();
+                    const days = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                    setDaysLeft(days);
+                }
+
+                // إذا انتهت الفترة التجريبية أو معلق للمراجعة، افتح النافذة فوراً وأغلق الشاشة
+                if (currentStatus === 'expired' || currentStatus === 'pending_approval') {
+                    setShowSubModal(true);
+                }
+            }
         } catch (err: any) {
             if (err.response?.status === 401) {
                 localStorage.removeItem('sarh_token');
@@ -425,7 +452,24 @@ export default function PosPage() {
                     >
                         <Settings size={16} /> الإعدادات
                     </Link>
+                    {/* شارة وحالة الاشتراك */}
+                    {subStatus === 'trial' && (
+                        <button
+                            onClick={() => setShowSubModal(true)}
+                            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                            <ShieldAlert size={14} /> متبقي {daysLeft} أيام تجريبية (ترقية)
+                        </button>
+                    )}
 
+                    {subStatus === 'pending_approval' && (
+                        <button
+                            onClick={() => setShowSubModal(true)}
+                            className="bg-blue-500/10 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                        >
+                            قيد مراجعة الدفع ⏳
+                        </button>
+                    )}
                     <button
                         onClick={handleLogout}
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 transition"
@@ -454,8 +498,8 @@ export default function PosPage() {
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${selectedCategory === cat
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 {cat}
@@ -478,8 +522,8 @@ export default function PosPage() {
                                     key={product._id}
                                     onClick={() => canClick && addToCart(product)}
                                     className={`p-4 rounded-2xl border text-right transition flex flex-col justify-between ${canClick
-                                            ? 'bg-slate-900/60 border-slate-800 hover:border-blue-500 hover:bg-slate-900 cursor-pointer active:scale-95'
-                                            : 'bg-slate-950 border-slate-900 opacity-40 cursor-not-allowed'
+                                        ? 'bg-slate-900/60 border-slate-800 hover:border-blue-500 hover:bg-slate-900 cursor-pointer active:scale-95'
+                                        : 'bg-slate-950 border-slate-900 opacity-40 cursor-not-allowed'
                                         }`}
                                 >
                                     <div>
@@ -942,10 +986,10 @@ export default function PosPage() {
 
                             {actualCashInput !== '' && (
                                 <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between border ${shiftDiff === 0
-                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                        : shiftDiff > 0
-                                            ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
-                                            : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                    : shiftDiff > 0
+                                        ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
+                                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                     }`}>
                                     <span>حالة النقدية:</span>
                                     <span className="font-mono">
@@ -1200,6 +1244,15 @@ export default function PosPage() {
                     </div>
                 </div>
             )}
+            {/* نافذة الاشتراك والترقية */}
+            <SubscriptionModal
+                isOpen={showSubModal || subStatus === 'expired'}
+                status={subStatus === 'active' ? 'trial' : subStatus}
+                daysLeft={daysLeft}
+                onClose={() => {
+                    if (subStatus !== 'expired') setShowSubModal(false);
+                }}
+            />
         </div>
     );
 }
