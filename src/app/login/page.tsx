@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { Lock, Mail, Store, ArrowLeft, AlertCircle, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -35,7 +36,6 @@ export default function LoginPage() {
             localStorage.setItem('sarh_token', token);
             localStorage.setItem('sarh_user', JSON.stringify(user));
 
-            // التوجيه الذكي حسب الدور والنوع المختار
             if (user?.role === 'AFFILIATE' || loginType === 'affiliate') {
                 router.push('/affiliate/dashboard');
             } else {
@@ -54,11 +54,11 @@ export default function LoginPage() {
             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
-                {/* التبديل بين نوع الحساب (منشأة / كاشير VS مسوق بالعمولة) */}
+                {/* التبديل بين نوع الحساب */}
                 <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-6">
                     <button
                         type="button"
-                        onClick={() => setLoginType('tenant')}
+                        onClick={() => { setLoginType('tenant'); setErrorMessage(''); }}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${loginType === 'tenant'
                             ? 'bg-blue-600 text-white shadow-lg'
                             : 'text-slate-400 hover:text-white'
@@ -68,7 +68,7 @@ export default function LoginPage() {
                     </button>
                     <button
                         type="button"
-                        onClick={() => setLoginType('affiliate')}
+                        onClick={() => { setLoginType('affiliate'); setErrorMessage(''); }}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${loginType === 'affiliate'
                             ? 'bg-emerald-600 text-white shadow-lg'
                             : 'text-slate-400 hover:text-white'
@@ -97,7 +97,6 @@ export default function LoginPage() {
                 )}
 
                 <form onSubmit={handleLogin} className="space-y-4">
-                    {/* حقل النطاق يظهر فقط لأصحاب المنشآت */}
                     {loginType === 'tenant' && (
                         <div>
                             <label className="text-xs text-slate-300 block mb-1.5 font-medium">نطاق المنشأة (Subdomain)</label>
@@ -155,6 +154,25 @@ export default function LoginPage() {
                         <ArrowLeft size={16} />
                     </Button>
                 </form>
+
+                {/* روابط التسجيل الذكية أسفل النموذج */}
+                <div className="text-center mt-5 pt-4 border-t border-slate-800/80">
+                    {loginType === 'tenant' ? (
+                        <p className="text-xs text-slate-400">
+                            ليس لديك حساب منشأة حتى الآن؟{' '}
+                            <Link href="/register" className="text-blue-400 font-bold hover:underline transition">
+                                أنشئ متجرك وابدأ مجاناً
+                            </Link>
+                        </p>
+                    ) : (
+                        <p className="text-xs text-slate-400">
+                            ليس لديك حساب شريك حتى الآن؟{' '}
+                            <Link href="/affiliate/register" className="text-emerald-400 font-bold hover:underline transition">
+                                انضم كمسوق وسجل مجاناً
+                            </Link>
+                        </p>
+                    )}
+                </div>
             </div>
         </div>
     );

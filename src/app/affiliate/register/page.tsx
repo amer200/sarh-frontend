@@ -55,11 +55,13 @@ export default function AffiliateRegisterPage() {
                     </div>
 
                     <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl text-right mb-6">
-                        <span className="text-xs text-slate-500 block mb-1">رابط التسويق:</span>
+                        <span className="text-xs text-slate-500 block mb-1">رابط التسويق الخاص بك:</span>
                         <div className="flex items-center justify-between gap-2 mt-1">
-                            <span className="text-slate-300 font-mono text-xs truncate dir-ltr">{successData.referralLink}</span>
+                            <span className="text-slate-300 font-mono text-xs truncate dir-ltr">
+                                {typeof window !== 'undefined' ? `${window.location.origin}/login?ref=${successData.referralCode}` : successData.referralLink}
+                            </span>
                             <button
-                                onClick={() => copyToClipboard(successData.referralLink)}
+                                onClick={() => copyToClipboard(`${window.location.origin}/login?ref=${successData.referralCode}`)}
                                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition shrink-0"
                             >
                                 {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
