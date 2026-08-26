@@ -10,11 +10,12 @@ import {
     Store, ShoppingCart, Plus, Minus, CreditCard,
     Banknote, Search, AlertCircle, Clock, KeyRound,
     LogOut, Printer, X, Package, PowerOff,
-    Calculator, Settings, ReceiptText, RotateCcw, BarChart3
+    Calculator, Settings, ReceiptText, RotateCcw, BarChart3,
+    ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import SubscriptionModal from '@/components/SubscriptionModal';
-import { ShieldAlert } from 'lucide-react';
+import AppSwitcher from '@/components/AppSwitcher';
 
 interface Product {
     _id: string;
@@ -42,7 +43,13 @@ export default function PosPage() {
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
-    // نوافذ
+    // حالات الاشتراك وحظر الكاشير
+    const [isBlocked, setIsBlocked] = useState(false);
+    const [subStatus, setSubStatus] = useState<string>('trial');
+    const [daysLeft, setDaysLeft] = useState<number>(7);
+    const [showSubModal, setShowSubModal] = useState(false);
+
+    // نوافذ الشيفت والمصروفات
     const [showShiftModal, setShowShiftModal] = useState(false);
     const [openingCashInput, setOpeningCashInput] = useState('100');
     const [cashierNameInput, setCashierNameInput] = useState('كاشير رئيسي');
@@ -60,6 +67,7 @@ export default function PosPage() {
     const [zReportData, setZReportData] = useState<any>(null);
     const [creditNoteData, setCreditNoteData] = useState<any>(null);
 
+    // المرتجعات
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [searchInvoiceNo, setSearchInvoiceNo] = useState('');
     const [invoiceToReturn, setInvoiceToReturn] = useState<any>(null);
@@ -71,10 +79,7 @@ export default function PosPage() {
     const barcodeBufferRef = useRef('');
     const lastKeyTimeRef = useRef(Date.now());
     const stateRef = useRef({ cart, activeShift, products, checkoutLoading });
-    // حالات الاشتراك
-    const [subStatus, setSubStatus] = useState<'trial' | 'expired' | 'pending_approval' | 'active'>('trial');
-    const [daysLeft, setDaysLeft] = useState<number>(7);
-    const [showSubModal, setShowSubModal] = useState<boolean>(false);
+
     useEffect(() => {
         stateRef.current = { cart, activeShift, products, checkoutLoading };
     }, [cart, activeShift, products, checkoutLoading]);
@@ -83,36 +88,31 @@ export default function PosPage() {
         try {
             setErrorMessage('');
             const [shiftRes, prodRes, subRes] = await Promise.all([
-                api.get('/pos/shifts/current'),
-                api.get('/pos/products'),
+                api.get('/pos/shifts/current').catch(() => ({ data: { data: null } })),
+                api.get('/pos/products').catch(() => ({ data: { data: [] } })),
                 api.get('/subscriptions/status').catch(() => ({ data: { data: null } }))
             ]);
 
-            setActiveShift(shiftRes.data.data);
-            const prods: Product[] = prodRes.data.data;
+            setActiveShift(shiftRes.data?.data || null);
+            const prods: Product[] = prodRes.data?.data || [];
             setProducts(prods);
 
             const cats = Array.from(new Set(prods.map(p => p.category || 'عام')));
             setCategories(['الكل', ...cats]);
 
-            // معالجة حالة الاشتراك
-            if (subRes.data?.data) {
-                const sub = subRes.data.data.subscription;
-                const isBlocked = subRes.data.data.isBlocked;
-                const currentStatus = isBlocked ? 'expired' : (sub?.status || 'trial');
+            // معالجة اشتراك نظام الـ POS
+            if (subRes.data && subRes.data.data) {
+                const posSub = subRes.data.data.pos || subRes.data.data.subscription || subRes.data.data;
+                if (posSub) {
+                    setIsBlocked(Boolean(posSub.isBlocked));
+                    const currentStatus = posSub.status || 'trial';
+                    setSubStatus(currentStatus);
 
-                setSubStatus(currentStatus);
-
-                // حساب الأيام المتبقية في التجربة
-                if (sub?.trialEndsAt) {
-                    const diffMs = new Date(sub.trialEndsAt).getTime() - Date.now();
-                    const days = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-                    setDaysLeft(days);
-                }
-
-                // إذا انتهت الفترة التجريبية أو معلق للمراجعة، افتح النافذة فوراً وأغلق الشاشة
-                if (currentStatus === 'expired' || currentStatus === 'pending_approval') {
-                    setShowSubModal(true);
+                    if (posSub.trialEndsAt) {
+                        const diffMs = new Date(posSub.trialEndsAt).getTime() - Date.now();
+                        const days = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                        setDaysLeft(days);
+                    }
                 }
             }
         } catch (err: any) {
@@ -120,7 +120,7 @@ export default function PosPage() {
                 localStorage.removeItem('sarh_token');
                 router.push('/login');
             } else {
-                setErrorMessage(err.response?.data?.error || 'فشل في جلب البيانات');
+                setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في جلب البيانات');
             }
         }
     };
@@ -162,7 +162,7 @@ export default function PosPage() {
         setErrorMessage('');
 
         const sub = currentCart.reduce((s, it) => s + it.product.sellingPrice * it.quantity, 0);
-        const tax = Number((sub * 0.15).toFixed(2));
+        const tax = Number((sub * 0.14).toFixed(2));
         const total = Number((sub + tax).toFixed(2));
 
         try {
@@ -176,13 +176,13 @@ export default function PosPage() {
             setCart([]);
             fetchData();
         } catch (err: any) {
-            setErrorMessage(err.response?.data?.error || 'فشلت عملية البيع');
+            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشلت عملية البيع');
         } finally {
             setCheckoutLoading(false);
         }
     }, []);
 
-    // مستمع قارئ الباركود + الاختصارات السريعة
+    // مستمع الباركود والاختصارات
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'F1') {
@@ -207,7 +207,6 @@ export default function PosPage() {
                 setCreditNoteData(null);
             }
 
-            // التقاط الباركود
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
@@ -251,7 +250,7 @@ export default function PosPage() {
             setShowShiftModal(false);
             fetchData();
         } catch (err: any) {
-            setErrorMessage(err.response?.data?.error || 'فشل في فتح الشيفت');
+            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في فتح الشيفت');
         }
     };
 
@@ -274,7 +273,7 @@ export default function PosPage() {
             setZReportData(res.data.data);
             fetchData();
         } catch (err: any) {
-            setErrorMessage(err.response?.data?.error || 'فشل في إغلاق الشيفت');
+            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في إغلاق الشيفت');
         } finally {
             setClosingShiftLoading(false);
         }
@@ -296,7 +295,7 @@ export default function PosPage() {
             setExpenseAmount('');
             setExpenseReason('');
         } catch (err: any) {
-            setErrorMessage(err.response?.data?.error || 'فشل في تسجيل المصروف');
+            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في تسجيل المصروف');
         } finally {
             setExpenseLoading(false);
         }
@@ -318,7 +317,7 @@ export default function PosPage() {
     };
 
     const subtotal = cart.reduce((sum, item) => sum + item.product.sellingPrice * item.quantity, 0);
-    const taxAmount = Number((subtotal * 0.15).toFixed(2));
+    const taxAmount = Number((subtotal * 0.14).toFixed(2));
     const totalAmount = Number((subtotal + taxAmount).toFixed(2));
 
     const handleSearchInvoiceForReturn = async (e: React.FormEvent) => {
@@ -331,7 +330,7 @@ export default function PosPage() {
             res.data.data.items.forEach((it: any) => { initialQty[it.productId] = 0; });
             setReturnQuantities(initialQty);
         } catch (err: any) {
-            alert(err.response?.data?.error || 'لم يتم العثور على الفاتورة أو تم إرجاعها مسبقاً');
+            alert((err.response && err.response.data && err.response.data.error) || 'لم يتم العثور على الفاتورة أو تم إرجاعها مسبقاً');
             setInvoiceToReturn(null);
         }
     };
@@ -361,7 +360,7 @@ export default function PosPage() {
             setCreditNoteData(res.data.data);
             fetchData();
         } catch (err: any) {
-            alert(err.response?.data?.error || 'فشل في إتمام المرتجع');
+            alert((err.response && err.response.data && err.response.data.error) || 'فشل في إتمام المرتجع');
         } finally {
             setReturnLoading(false);
         }
@@ -382,19 +381,21 @@ export default function PosPage() {
             {/* Header */}
             <header className="h-16 border-b border-slate-800 bg-slate-900/60 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-md flex items-center justify-center border border-slate-800">
-                        <Image src="/logo.png" alt="صَرْح" fill className="object-cover scale-150" priority />
+                    <AppSwitcher />
+
+                    <div className="w-9 h-9 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-black text-lg shadow-sm">
+                        ص
                     </div>
                     <div>
-                        <h1 className="text-base font-bold text-white leading-tight">كاشير صَرْح السحابي</h1>
-                        <p className="text-xs text-slate-400 font-mono">{tenantSubdomain}.sarh.cloud</p>
+                        <h1 className="text-sm font-bold text-white leading-tight">كاشير صَرْح للمطاعم والكافيهات</h1>
+                        <p className="text-[11px] text-slate-400 font-mono">{tenantSubdomain}.sarh.cloud</p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                     {activeShift ? (
-                        <div className="flex items-center gap-2.5 text-xs">
-                            <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-xs">
+                            <div className="bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2">
                                 <Clock size={14} className="text-emerald-400" />
                                 <span className="text-slate-400">الشيفت:</span>
                                 <span className="font-mono text-emerald-400 font-bold">{activeShift.shiftNumber}</span>
@@ -403,14 +404,14 @@ export default function PosPage() {
 
                             <button
                                 onClick={() => setShowReturnModal(true)}
-                                className="bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition"
+                                className="bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 transition"
                             >
                                 <RotateCcw size={14} /> مرتجع <kbd className="text-[10px] font-mono opacity-60">F4</kbd>
                             </button>
 
                             <button
                                 onClick={() => setShowExpenseModal(true)}
-                                className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition"
+                                className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 transition"
                             >
                                 <ReceiptText size={14} /> مصروف <kbd className="text-[10px] font-mono opacity-60">F3</kbd>
                             </button>
@@ -420,7 +421,7 @@ export default function PosPage() {
                                     setActualCashInput(activeShift.expectedCash.toString());
                                     setShowCloseShiftModal(true);
                                 }}
-                                className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition"
+                                className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 transition"
                             >
                                 <PowerOff size={14} /> إغلاق الشيفت
                             </button>
@@ -428,7 +429,7 @@ export default function PosPage() {
                     ) : (
                         <Button
                             onClick={() => setShowShiftModal(true)}
-                            className="bg-amber-600 hover:bg-amber-500 text-xs py-2 px-3 font-semibold flex items-center gap-1.5"
+                            className="bg-amber-600 hover:bg-amber-500 text-xs py-2 px-3.5 font-bold flex items-center gap-1.5 rounded-xl"
                         >
                             <KeyRound size={14} /> فتح شيفت جديد
                         </Button>
@@ -438,41 +439,44 @@ export default function PosPage() {
                         href="/pos/inventory"
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-blue-400 transition flex items-center gap-1.5 text-xs font-semibold"
                     >
-                        <Package size={16} /> المخزن
+                        <Package size={15} /> المخزن
                     </Link>
                     <Link
                         href="/pos/reports"
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-emerald-400 transition flex items-center gap-1.5 text-xs font-semibold"
                     >
-                        <BarChart3 size={16} /> التقارير
+                        <BarChart3 size={15} /> التقارير
                     </Link>
                     <Link
                         href="/pos/settings"
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white transition flex items-center gap-1.5 text-xs font-semibold"
                     >
-                        <Settings size={16} /> الإعدادات
+                        <Settings size={15} /> الإعدادات
                     </Link>
+
                     {/* شارة وحالة الاشتراك */}
                     {subStatus === 'trial' && (
                         <button
                             onClick={() => setShowSubModal(true)}
-                            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                         >
-                            <ShieldAlert size={14} /> متبقي {daysLeft} أيام تجريبية (ترقية)
+                            <ShieldAlert size={14} /> متبقي {daysLeft} أيام تجريبية
                         </button>
                     )}
 
                     {subStatus === 'pending_approval' && (
                         <button
                             onClick={() => setShowSubModal(true)}
-                            className="bg-blue-500/10 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                            className="bg-blue-500/10 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5"
                         >
                             قيد مراجعة الدفع ⏳
                         </button>
                     )}
+
                     <button
                         onClick={handleLogout}
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 transition"
+                        title="تسجيل الخروج"
                     >
                         <LogOut size={16} />
                     </button>
@@ -498,7 +502,7 @@ export default function PosPage() {
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${selectedCategory === cat
-                                    ? 'bg-blue-600 text-white'
+                                    ? 'bg-blue-600 text-white shadow-lg'
                                     : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
@@ -537,7 +541,7 @@ export default function PosPage() {
                                             المتوفر: <span className="font-mono text-slate-200">{product.stockQuantity}</span>
                                         </span>
                                         <span className="text-sm font-black text-sky-400 font-mono">
-                                            {product.sellingPrice} SAR
+                                            {product.sellingPrice} ج.م
                                         </span>
                                     </div>
                                 </div>
@@ -568,7 +572,7 @@ export default function PosPage() {
                                     <div className="flex-1 min-w-0">
                                         <h4 className="text-xs font-bold text-white truncate">{item.product.name}</h4>
                                         <span className="text-[11px] text-sky-400 font-mono font-bold">
-                                            {(item.product.sellingPrice * item.quantity).toFixed(2)} SAR
+                                            {(item.product.sellingPrice * item.quantity).toFixed(2)} ج.م
                                         </span>
                                     </div>
 
@@ -598,15 +602,15 @@ export default function PosPage() {
                         <div className="space-y-1.5 text-xs text-slate-400">
                             <div className="flex justify-between">
                                 <span>المجموع الفرعي:</span>
-                                <span className="font-mono text-slate-200">{subtotal.toFixed(2)} SAR</span>
+                                <span className="font-mono text-slate-200">{subtotal.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between">
-                                <span>ضريبة القيمة المضافة (15%):</span>
-                                <span className="font-mono text-slate-200">{taxAmount.toFixed(2)} SAR</span>
+                                <span>ضريبة القيمة المضافة (14%):</span>
+                                <span className="font-mono text-slate-200">{taxAmount.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-sm font-bold text-white border-t border-slate-800/60 pt-2">
                                 <span>الإجمالي النهائي:</span>
-                                <span className="font-mono text-sky-400 text-base">{totalAmount.toFixed(2)} SAR</span>
+                                <span className="font-mono text-sky-400 text-base">{totalAmount.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
@@ -623,7 +627,7 @@ export default function PosPage() {
                                 disabled={cart.length === 0 || !activeShift || checkoutLoading}
                                 className="bg-blue-600 hover:bg-blue-500 py-3 text-xs font-bold flex items-center justify-center gap-1.5"
                             >
-                                <CreditCard size={16} /> {checkoutLoading ? 'جارٍ...' : 'شبكة'} <kbd className="bg-blue-800/80 px-1.5 py-0.5 rounded text-[10px] font-mono">F2</kbd>
+                                <CreditCard size={16} /> {checkoutLoading ? 'جارٍ...' : 'فيزا'} <kbd className="bg-blue-800/80 px-1.5 py-0.5 rounded text-[10px] font-mono">F2</kbd>
                             </Button>
                         </div>
                     </div>
@@ -663,7 +667,7 @@ export default function PosPage() {
                                 <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs space-y-1">
                                     <div className="flex justify-between">
                                         <span className="text-slate-400">تاريخ الفاتورة:</span>
-                                        <span>{new Date(invoiceToReturn.createdAt).toLocaleString('en-US')}</span>
+                                        <span>{new Date(invoiceToReturn.createdAt).toLocaleString('ar-EG')}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-slate-400">طريقة الدفع الأصلية:</span>
@@ -763,7 +767,7 @@ export default function PosPage() {
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500 font-sans">التاريخ:</span>
-                                <span>{new Date(creditNoteData.createdAt).toLocaleString('en-US')}</span>
+                                <span>{new Date(creditNoteData.createdAt).toLocaleString('ar-EG')}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500 font-sans">سبب الإرجاع:</span>
@@ -789,23 +793,23 @@ export default function PosPage() {
                         <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">المجموع الفرعي المسترد:</span>
-                                <span>-{creditNoteData.financials?.subtotal.toFixed(2)} SAR</span>
+                                <span>-{creditNoteData.financials?.subtotal.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-slate-600">
-                                <span className="font-sans">ضريبة القيمة المضافة المستردة (15%):</span>
-                                <span>-{creditNoteData.financials?.taxAmount.toFixed(2)} SAR</span>
+                                <span className="font-sans">ضريبة القيمة المضافة المستردة:</span>
+                                <span>-{creditNoteData.financials?.taxAmount.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between font-bold text-sm text-rose-600 pt-1.5 border-t border-slate-200">
                                 <span className="font-sans">إجمالي المبلغ المسترد:</span>
-                                <span>-{creditNoteData.financials?.totalRefundAmount.toFixed(2)} SAR</span>
+                                <span>-{creditNoteData.financials?.totalRefundAmount.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
                         <div className="py-3 text-center flex flex-col items-center justify-center">
                             <div className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm inline-block">
-                                <QRCodeSVG value={creditNoteData.zatcaQr} size={100} level="M" />
+                                <QRCodeSVG value={creditNoteData.zatcaQr || 'SARH-CREDIT-NOTE'} size={100} level="M" />
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-2">إشعار دائن ضريبي معتمد (ZATCA Compliant)</p>
+                            <p className="text-[10px] text-slate-500 mt-2">إشعار دائن ضريبي معتمد</p>
                         </div>
 
                         <div className="flex gap-2 print:hidden pt-1">
@@ -845,7 +849,7 @@ export default function PosPage() {
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">عهدة بداية الدرج (SAR):</label>
+                                <label className="text-xs text-slate-400 block mb-1">عهدة بداية الدرج (ج.م):</label>
                                 <input
                                     type="number"
                                     required
@@ -887,7 +891,7 @@ export default function PosPage() {
 
                         <form onSubmit={handleAddExpense} className="space-y-4">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">المبلغ المسحوب من الدرج (SAR):</label>
+                                <label className="text-xs text-slate-400 block mb-1">المبلغ المسحوب من الدرج (ج.م):</label>
                                 <input
                                     type="number"
                                     required
@@ -948,31 +952,31 @@ export default function PosPage() {
                         <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 text-xs font-mono mb-4">
                             <div className="flex justify-between text-slate-400">
                                 <span>عهدة بداية الدرج:</span>
-                                <span className="text-white">{activeShift.openingCash.toFixed(2)} SAR</span>
+                                <span className="text-white">{activeShift.openingCash?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-slate-400">
                                 <span>مبيعات الكاش (+):</span>
-                                <span className="text-emerald-400">{activeShift.cashSales.toFixed(2)} SAR</span>
+                                <span className="text-emerald-400">{activeShift.cashSales?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-slate-400">
-                                <span>مبيعات الشبكة / مدى:</span>
-                                <span className="text-blue-400">{activeShift.cardSales.toFixed(2)} SAR</span>
+                                <span>مبيعات الفيزا:</span>
+                                <span className="text-blue-400">{activeShift.cardSales?.toFixed(2)} ج.م</span>
                             </div>
                             {activeShift.expenses?.length > 0 && (
                                 <div className="flex justify-between text-amber-400">
                                     <span>المصروفات النثرية (-):</span>
-                                    <span>-{activeShift.expenses.reduce((s: number, x: any) => s + x.amount, 0).toFixed(2)} SAR</span>
+                                    <span>-{activeShift.expenses.reduce((s: number, x: any) => s + x.amount, 0).toFixed(2)} ج.م</span>
                                 </div>
                             )}
                             <div className="flex justify-between text-slate-300 font-bold pt-2 border-t border-slate-800 text-sm">
                                 <span>الكاش المتوقع في الدرج:</span>
-                                <span className="text-sky-400">{activeShift.expectedCash.toFixed(2)} SAR</span>
+                                <span className="text-sky-400">{activeShift.expectedCash?.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
                         <form onSubmit={handleCloseShift} className="space-y-3">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">المبلغ الفعلي المستلم في الدرج (SAR):</label>
+                                <label className="text-xs text-slate-400 block mb-1">المبلغ الفعلي المستلم في الدرج (ج.م):</label>
                                 <input
                                     type="number"
                                     required
@@ -994,8 +998,8 @@ export default function PosPage() {
                                     <span>حالة النقدية:</span>
                                     <span className="font-mono">
                                         {shiftDiff === 0 && 'مطابق تماماً (0.00)'}
-                                        {shiftDiff > 0 && `زيادة في الدرج: +${shiftDiff.toFixed(2)} SAR`}
-                                        {shiftDiff < 0 && `عجز في الدرج: ${shiftDiff.toFixed(2)} SAR`}
+                                        {shiftDiff > 0 && `زيادة في الدرج: +${shiftDiff.toFixed(2)} ج.م`}
+                                        {shiftDiff < 0 && `عجز في الدرج: ${shiftDiff.toFixed(2)} ج.م`}
                                     </span>
                                 </div>
                             )}
@@ -1056,7 +1060,7 @@ export default function PosPage() {
                                 </p>
                             )}
                             <div className="mt-1 inline-block px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600">
-                                فاتورة ضريبية مبسطة
+                                فاتورة مبيعات ضريبية
                             </div>
                         </div>
 
@@ -1067,7 +1071,7 @@ export default function PosPage() {
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500 font-sans">التاريخ:</span>
-                                <span>{new Date(lastInvoice.createdAt).toLocaleString('en-US')}</span>
+                                <span>{new Date(lastInvoice.createdAt).toLocaleString('ar-EG')}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500 font-sans">الكاشير:</span>
@@ -1097,15 +1101,15 @@ export default function PosPage() {
                         <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
                             <div className="flex justify-between text-slate-600 font-sans">
                                 <span>المجموع الفرعي:</span>
-                                <span>{lastInvoice.financials?.subtotal.toFixed(2)} SAR</span>
+                                <span>{lastInvoice.financials?.subtotal.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-slate-600 font-sans">
-                                <span>ضريبة القيمة المضافة (15%):</span>
-                                <span>{lastInvoice.financials?.taxAmount.toFixed(2)} SAR</span>
+                                <span>ضريبة القيمة المضافة (14%):</span>
+                                <span>{lastInvoice.financials?.taxAmount.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200 font-sans">
                                 <span>الإجمالي النهائي:</span>
-                                <span className="font-mono text-base">{lastInvoice.financials?.totalAmount.toFixed(2)} SAR</span>
+                                <span className="font-mono text-base">{lastInvoice.financials?.totalAmount.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
@@ -1168,11 +1172,11 @@ export default function PosPage() {
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-slate-500 font-sans">وقت الفتح:</span>
-                                <span>{new Date(zReportData.shiftDetails?.openedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                <span>{new Date(zReportData.shiftDetails?.openedAt).toLocaleString('ar-EG')}</span>
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-slate-500 font-sans">وقت الإغلاق:</span>
-                                <span>{new Date(zReportData.shiftDetails?.closedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                <span>{new Date(zReportData.shiftDetails?.closedAt).toLocaleString('ar-EG')}</span>
                             </div>
                         </div>
 
@@ -1180,19 +1184,19 @@ export default function PosPage() {
                             <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">ملخص المبيعات:</div>
                             <div className="flex justify-between">
                                 <span className="text-slate-600 font-sans">مبيعات نقدية (كاش):</span>
-                                <span>{zReportData.financialSummary?.cashSales.toFixed(2)} SAR</span>
+                                <span>{zReportData.financialSummary?.cashSales?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-600 font-sans">مبيعات شبكة / مدى:</span>
-                                <span>{zReportData.financialSummary?.cardSales.toFixed(2)} SAR</span>
+                                <span className="text-slate-600 font-sans">مبيعات الفيزا:</span>
+                                <span>{zReportData.financialSummary?.cardSales?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-600 font-sans">ضريبة القيمة المضافة (15%):</span>
-                                <span>{zReportData.financialSummary?.totalTax.toFixed(2)} SAR</span>
+                                <span className="text-slate-600 font-sans">ضريبة القيمة المضافة (14%):</span>
+                                <span>{zReportData.financialSummary?.totalTax?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-100">
                                 <span className="font-sans">إجمالي مبيعات الوردية:</span>
-                                <span>{zReportData.financialSummary?.totalSales.toFixed(2)} SAR</span>
+                                <span>{zReportData.financialSummary?.totalSales?.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
@@ -1200,30 +1204,30 @@ export default function PosPage() {
                             <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">جرد ومطابقة صندوق الدرج:</div>
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">عهدة البداية:</span>
-                                <span>+{zReportData.financialSummary?.openingCash.toFixed(2)} SAR</span>
+                                <span>+{zReportData.financialSummary?.openingCash?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">مبيعات الكاش المضافة:</span>
-                                <span>+{zReportData.financialSummary?.cashSales.toFixed(2)} SAR</span>
+                                <span>+{zReportData.financialSummary?.cashSales?.toFixed(2)} ج.م</span>
                             </div>
                             {zReportData.financialSummary?.totalExpenses > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                     <span className="font-sans">المصروفات النثرية:</span>
-                                    <span>-{zReportData.financialSummary?.totalExpenses.toFixed(2)} SAR</span>
+                                    <span>-{zReportData.financialSummary?.totalExpenses?.toFixed(2)} ج.م</span>
                                 </div>
                             )}
                             <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
                                 <span className="font-sans">الكاش المتوقع:</span>
-                                <span>{zReportData.financialSummary?.expectedCash.toFixed(2)} SAR</span>
+                                <span>{zReportData.financialSummary?.expectedCash?.toFixed(2)} ج.م</span>
                             </div>
                             <div className="flex justify-between font-bold text-slate-900">
                                 <span className="font-sans">الكاش الفعلي المستلم:</span>
-                                <span>{zReportData.financialSummary?.actualCash.toFixed(2)} SAR</span>
+                                <span>{zReportData.financialSummary?.actualCash?.toFixed(2)} ج.م</span>
                             </div>
                             <div className={`flex justify-between font-bold text-xs pt-1 border-t border-slate-200 ${zReportData.financialSummary?.difference === 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
                                 <span className="font-sans">الفارق:</span>
-                                <span>{zReportData.financialSummary?.difference.toFixed(2)} SAR</span>
+                                <span>{zReportData.financialSummary?.difference?.toFixed(2)} ج.م</span>
                             </div>
                         </div>
 
@@ -1244,15 +1248,19 @@ export default function PosPage() {
                     </div>
                 </div>
             )}
-            {/* نافذة الاشتراك والترقية */}
-            <SubscriptionModal
-                isOpen={showSubModal || subStatus === 'expired'}
-                status={subStatus === 'active' ? 'trial' : subStatus}
-                daysLeft={daysLeft}
-                onClose={() => {
-                    if (subStatus !== 'expired') setShowSubModal(false);
-                }}
-            />
+
+            {/* نافذة حظر الكاشير والمطالبة بالاشتراك */}
+            {(isBlocked || showSubModal) && (
+                <SubscriptionModal
+                    appModule="pos"
+                    appName="صَرْح POS للمطاعم"
+                    price={250}
+                    onSuccess={() => {
+                        setShowSubModal(false);
+                        fetchData();
+                    }}
+                />
+            )}
         </div>
     );
 }

@@ -2,192 +2,140 @@
 
 import React, { useState } from 'react';
 import api from '@/lib/api';
-import { Lock, Clock, CheckCircle2, AlertCircle, Copy, Check, UploadCloud, Smartphone } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 interface SubscriptionModalProps {
-    isOpen: boolean;
-    status: 'trial' | 'expired' | 'pending_approval';
-    daysLeft?: number;
-    onClose?: () => void;
+    appModule?: 'pos' | 'retail' | 'fleet';
+    appName?: string;
+    price?: number;
+    onSuccess?: () => void;
 }
 
-export default function SubscriptionModal({ isOpen, status, daysLeft, onClose }: SubscriptionModalProps) {
-    const [copiedNumber, setCopiedNumber] = useState(false);
-    const [senderPhone, setSenderPhone] = useState('');
-    const [amount, setAmount] = useState('250'); // سعر الباقة الشهرية مثلاً
-    const [paymentMethod, setPaymentMethod] = useState<'instapay' | 'vodafone_cash'>('instapay');
-    const [screenshotBase64, setScreenshotBase64] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    const [submittedSuccess, setSubmittedSuccess] = useState(false);
+export default function SubscriptionModal({
+    appModule = 'pos',
+    appName = 'صَرْح POS للمطاعم',
+    price = 250,
+    onSuccess = () => { }
+}: SubscriptionModalProps) {
+    const currentPrice = price || 250;
+
+    const [formData, setFormData] = useState({
+        senderPhoneOrName: '',
+        amount: currentPrice.toString(),
+        paymentMethod: 'instapay',
+        screenshotUrl: '',
+        notes: ''
+    });
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
 
-    if (!isOpen) return null;
-
-    // تحويل الصورة المرفوعة إلى Base64
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.size > 3 * 1024 * 1024) {
-                alert('أقصى حجم للصورة 3 ميجابايت');
-                return;
-            }
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setScreenshotBase64(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleSendProof = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!screenshotBase64) {
-            setErrorMsg('يرجى إرفاق صورة إشعار التحويل');
-            return;
-        }
-
-        setSubmitting(true);
+        setLoading(true);
         setErrorMsg('');
+        setMessage('');
 
         try {
-            await api.post('/subscriptions/proof', {
-                senderPhoneOrName: senderPhone,
-                amount: Number(amount),
-                paymentMethod,
-                screenshotUrl: screenshotBase64
-            });
-            setSubmittedSuccess(true);
-        } catch (err: any) {
-            setErrorMsg(err.response?.data?.error || 'فشل إرسال الإشعار');
-        } finally {
-            setSubmitting(false);
-        }
-    };
+            const payload = {
+                appModule,
+                senderPhoneOrName: formData.senderPhoneOrName,
+                amount: Number(formData.amount) || currentPrice,
+                paymentMethod: formData.paymentMethod,
+                screenshotUrl: formData.screenshotUrl || 'https://placehold.co/600x400?text=Payment+Receipt',
+                notes: formData.notes
+            };
 
-    const copyPaymentNumber = (text: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedNumber(true);
-        setTimeout(() => setCopiedNumber(false), 2000);
+            const res = await api.post('/subscriptions/proof', payload);
+            setMessage(res.data?.message || 'تم استلام الإشعار وتفعيل مهلة الـ 24 ساعة بنجاح');
+            setTimeout(() => {
+                onSuccess();
+            }, 1500);
+        } catch (err: any) {
+            setErrorMsg((err.response && err.response.data && err.response.data.error) || 'فشل إرسال إشعار الدفع');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 font-sans text-slate-100" dir="rtl">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-md" dir="rtl">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl text-xs">
+
                 {/* Header */}
-                <div className="text-center mb-5">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-3">
-                        {status === 'expired' ? <Lock size={24} /> : <Clock size={24} />}
+                <div className="text-center space-y-2">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg">
+                        <ShieldAlert size={28} />
                     </div>
-                    <h2 className="text-lg font-black text-white">
-                        {status === 'expired' ? 'انتهت الفترة التجريبية (7 أيام)' : 'ترقية وتفعيل اشتراك المنشأة'}
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                        {status === 'expired'
-                            ? 'يرجى تجديد الاشتراك لمتابعة إصدار الفواتير واستخدام الكاشير'
-                            : `متبقي في التجربة المجانية: ${daysLeft} أيام`}
+                    <h2 className="text-lg font-black text-white">انتهت فترة التجربة أو الاشتراك لتطبيق ({appName})</h2>
+                    <p className="text-slate-400 text-xs">
+                        لتستمر في استخدام نظام {appName} دون انقطاع، يرجى تحويل مبلغ <span className="text-emerald-400 font-bold font-mono">{currentPrice} ج.م</span> ورفع إيصال الدفع أدناه (سيتم تفعيل مهلة 24 ساعة للعمل فوراً).
                     </p>
                 </div>
 
-                {submittedSuccess || status === 'pending_approval' ? (
-                    <div className="text-center py-6 space-y-3">
-                        <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
-                            <CheckCircle2 size={32} />
-                        </div>
-                        <h3 className="text-base font-bold text-white">تم استلام إشعار التحويل بنجاح!</h3>
-                        <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                            عمليتك قيد المراجعة حالياً من فريق الإدارة. سيتم تفعيل حسابك فور التحقق خلال مدة أقصاها 24 ساعة.
-                        </p>
+                {/* Payment Methods Info Box */}
+                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 font-mono">
+                    <div className="flex justify-between text-slate-400 font-sans">
+                        <span>طرق الدفع المتاحة:</span>
+                        <span className="text-white font-bold">InstaPay / فودافون كاش</span>
                     </div>
-                ) : (
-                    <form onSubmit={handleSendProof} className="space-y-4 text-xs">
-                        {errorMsg && (
-                            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center gap-2">
-                                <AlertCircle size={15} /> {errorMsg}
-                            </div>
-                        )}
+                    <div className="flex justify-between items-center text-slate-300">
+                        <span>رقم التحويل / العنوان:</span>
+                        <span className="text-blue-400 font-black select-all">sarh.pay@instapay</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300 pt-1 border-t border-slate-800/80">
+                        <span>المطلوب تحويله:</span>
+                        <span className="text-emerald-400 font-black text-sm">{currentPrice}.00 ج.م</span>
+                    </div>
+                </div>
 
-                        {/* بيانات المحفظة / الحساب للتحويل */}
-                        <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2.5">
-                            <span className="text-[11px] text-slate-400 font-bold block">بيانات التحويل المعتمدة:</span>
-
-                            <div className="flex items-center justify-between bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                                <div className="flex items-center gap-2">
-                                    <Smartphone size={16} className="text-emerald-400" />
-                                    <div>
-                                        <p className="text-[10px] text-slate-500">فودافون كاش / إنستاباي:</p>
-                                        <p className="font-mono font-bold text-white text-sm">01000000000</p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => copyPaymentNumber('01000000000')}
-                                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 text-[10px] transition"
-                                >
-                                    {copiedNumber ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                                    {copiedNumber ? 'تم النسخ' : 'نسخ الرقم'}
-                                </button>
-                            </div>
-
-                            <div className="text-[10px] text-slate-500 leading-relaxed">
-                                قيمة الاشتراك الشهري: <b className="text-emerald-400">250 ج.م</b> (أو السنوي: <b className="text-emerald-400">2400 ج.م</b> شامل كل التحديثات والدعم).
-                            </div>
-                        </div>
-
-                        {/* نموذج إدخال بيانات العملية */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="text-slate-400 block mb-1 font-semibold">رقم الهاتف / الاسم المحول منه:</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="010xxxxxxxx"
-                                    value={senderPhone}
-                                    onChange={e => setSenderPhone(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-slate-400 block mb-1 font-semibold">المبلغ المحول (ج.م):</label>
-                                <input
-                                    type="number"
-                                    required
-                                    value={amount}
-                                    onChange={e => setAmount(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
-                                />
-                            </div>
-                        </div>
-
-                        {/* رفع سكرين التحويل */}
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold">صورة إشعار / سكرين التحويل:</label>
-                            <div className="relative border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-3 text-center bg-slate-950 cursor-pointer">
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleFileUpload}
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                />
-                                <div className="flex flex-col items-center justify-center gap-1">
-                                    <UploadCloud size={20} className="text-slate-500" />
-                                    <span className="text-[11px] text-slate-400">
-                                        {screenshotBase64 ? '✅ تم اختيار صورة الإشعار بنجاح' : 'اضغط لاختيار صورة التحويل من جهازك'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <Button
-                            type="submit"
-                            disabled={submitting}
-                            className="w-full py-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg transition"
-                        >
-                            {submitting ? 'جارٍ إرسال الإشعار...' : 'تأكيد وإرسال إشعار التحويل'}
-                        </Button>
-                    </form>
+                {message && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl flex items-center gap-2">
+                        <CheckCircle2 size={16} /> <span>{message}</span>
+                    </div>
                 )}
+
+                {errorMsg && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl flex items-center gap-2">
+                        <AlertCircle size={16} /> <span>{errorMsg}</span>
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="text-slate-300 block mb-1 font-semibold">رقم الهاتف المحول منه أو اسم صاحب الحساب:</label>
+                        <input
+                            type="text"
+                            required
+                            placeholder="مثال: 01012345678 (أو أحمد محمد)"
+                            value={formData.senderPhoneOrName}
+                            onChange={e => setFormData({ ...formData, senderPhoneOrName: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-slate-300 block mb-1 font-semibold">رابط صورة إيصال التحويل (Screenshot URL):</label>
+                        <input
+                            type="url"
+                            required
+                            placeholder="https://imgur.com/image.jpg أو رابط الصورة"
+                            value={formData.screenshotUrl}
+                            onChange={e => setFormData({ ...formData, screenshotUrl: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-mono dir-ltr text-right focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <Button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-xl shadow-xl transition active:scale-98"
+                    >
+                        {loading ? 'جارٍ إرسال الإشعار وتفعيل المهلة...' : 'إرسال إشعار الدفع وتفعيل 24 ساعة سماح فوراً'}
+                    </Button>
+                </form>
+
             </div>
         </div>
     );
