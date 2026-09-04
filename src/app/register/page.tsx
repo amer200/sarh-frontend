@@ -56,7 +56,7 @@ function RegisterForm() {
                 referralCode: formData.referralCode ? formData.referralCode.trim().toUpperCase() : undefined
             };
 
-            const res = await api.post('/auth/register', payload);
+            const res = await api.post('/tenants/register', payload);
 
             if (res.data && res.data.token) {
                 localStorage.setItem('sarh_token', res.data.token);
