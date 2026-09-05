@@ -1,0 +1,1056 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+public/
+  file.svg
+  globe.svg
+  logo.png
+  next.svg
+  vercel.svg
+  window.svg
+src/
+  app/
+    admin/
+      subscriptions/
+        page.tsx
+      page.tsx
+    affiliate/
+      dashboard/
+        page.tsx
+      register/
+        page.tsx
+    checkout/
+      mock-pay/
+        page.tsx
+    dashboard/
+      page.tsx
+    login/
+      page.tsx
+    pos/
+      inventory/
+        page.tsx
+      reports/
+        page.tsx
+      settings/
+        page.tsx
+      page.tsx
+    register/
+      page.tsx
+    retail/
+      pos/
+        page.tsx
+      page.tsx
+    favicon.ico
+    globals.css
+    icon.png
+    layout.tsx
+    page.tsx
+  components/
+    pos/
+      ReceiptModal.tsx
+    ui/
+      Button.tsx
+      Input.tsx
+    AppSwitcher.tsx
+    SubscriptionModal.tsx
+  lib/
+    api.ts
+.clineignore
+.gitignore
+AGENTS.md
+CLAUDE.md
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="src/app/admin/subscriptions/page.tsx">
+import React, { useState, useEffect } from 'react';
+import api from '@/lib/api';
+import { CheckCircle2, XCircle, ShieldCheck, Eye } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+const fetchProofs = async () =>
+⋮----
+const handleApprove = async (proofId: string, months: number) =>
+⋮----
+{/* زر معاينة السكرين */}
+⋮----
+{/* أزرار التفعيل */}
+⋮----
+onClick=
+⋮----
+{/* نافذة تكبير صورة الإيصال */}
+</file>
+
+<file path="src/app/admin/page.tsx">
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
+import {
+    ShieldAlert, Store, DollarSign, Users, Clock,
+    CheckCircle2, AlertCircle, Eye, Search,
+    ShieldCheck, RefreshCw, Power, Award, ArrowUpRight
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+// Data States
+⋮----
+const fetchData = async () =>
+⋮----
+// تنفيذ إجراء على منشأة
+const handleTenantAction = async (tenantId: string, action: string, days?: number, plan?: string) =>
+⋮----
+// اعتماد تحويل بنكي
+const handleApproveProof = async (proofId: string, months: number) =>
+⋮----
+{/* Header */}
+⋮----
+onClick=
+⋮----
+{/* Navigation Tabs */}
+⋮----
+{/* TAB 1: OVERVIEW */}
+⋮----
+{/* TAB 2: TENANTS LIST */}
+⋮----
+onChange=
+⋮----
+{/* TAB 3: PAYMENT PROOFS */}
+⋮----
+{/* TAB 4: AFFILIATES */}
+⋮----
+{/* Modal صورة الإشعار المكبرة */}
+</file>
+
+<file path="src/app/affiliate/dashboard/page.tsx">
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useRouter } from 'next/navigation';
+import {
+    DollarSign,
+    Users,
+    Clock,
+    TrendingUp,
+    Copy,
+    Check,
+    LogOut,
+    Building2,
+    ArrowUpRight
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+export default function AffiliateDashboard()
+⋮----
+const fetchDashboard = async () =>
+⋮----
+const handleLogout = () =>
+⋮----
+const copyToClipboard = (text: string) =>
+⋮----
+{/* Top Header */}
+⋮----
+{/* Affiliate Link Banner */}
+⋮----
+onClick=
+⋮----
+{/* Stats Grid */}
+⋮----
+{/* Referred Tenants Table */}
+</file>
+
+<file path="src/app/checkout/mock-pay/page.tsx">
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import axios from 'axios';
+import { CheckCircle2, CreditCard, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+const handleSimulatePayment = async () =>
+⋮----
+<Button onClick=
+</file>
+
+<file path="src/app/dashboard/page.tsx">
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
+import {
+    UtensilsCrossed, Shirt, Truck, Settings, ShieldCheck,
+    ArrowLeft, Store, DollarSign, Clock, User, LogOut,
+    CheckCircle2, Sparkles, AlertCircle, Play
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+const fetchPortalData = async () =>
+⋮----
+const handleStartTrial = async (appModule: 'pos' | 'retail') =>
+⋮----
+const handleLogout = () =>
+⋮----
+{/* Header */}
+⋮----
+{/* App Launcher Cards with Independent Subscriptions */}
+⋮----
+{/* 1. تطبيق صَرْح POS */}
+⋮----
+onClick=
+⋮----
+{/* 2. تطبيق صَرْح Retail */}
+⋮----
+{/* 3. تطبيق صَرْح Fleet */}
+</file>
+
+<file path="src/app/retail/pos/page.tsx">
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import api from '@/lib/api';
+import {
+    Barcode, Search, ShoppingBag, Trash2, Plus, Minus,
+    CreditCard, Banknote, Smartphone, CheckCircle2,
+    AlertCircle, ArrowRight, Store, Printer, Tag, X, User,
+    ShieldAlert
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import AppSwitcher from '@/components/AppSwitcher';
+import SubscriptionModal from '@/components/SubscriptionModal';
+⋮----
+export default function RetailPosPage()
+⋮----
+// فحص حالة الاشتراك والقفل
+⋮----
+// Search & Barcode Scan
+⋮----
+// نافذة اختيار المقاس واللون
+⋮----
+// عمليات الدفع
+⋮----
+const fetchData = async () =>
+⋮----
+// فحص اشتراك نظام الملابس والتجزئة (retail)
+⋮----
+// إضافة صنف عبر مسح الباركود المباشر
+const handleBarcodeSubmit = (e: React.FormEvent) =>
+⋮----
+// إضافة متغير محدد للسلة
+const addToCart = (product: any, variant: any) =>
+⋮----
+// تعديل الكمية بالسلة
+const updateQuantity = (variantId: string, delta: number) =>
+⋮----
+// تأكيد ودفع فاتورة التجزئة
+const handleCheckout = async () =>
+⋮----
+{/* Top Bar */}
+⋮----
+{/* Branch Selector & Subscription Badge */}
+⋮----
+onClick=
+⋮----
+{/* Main Split Screen */}
+⋮----
+{/* Left: Product Grid & Barcode Scanner (7 cols) */}
+⋮----
+{/* Right: Cart & Checkout (5 cols) */}
+⋮----
+<button onClick=
+⋮----
+{/* Modal: Size & Color Picker */}
+⋮----
+{/* نافذة حظر كاشير الملابس والمطالبة بالاشتراك */}
+</file>
+
+<file path="src/app/retail/page.tsx">
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import api from '@/lib/api';
+import {
+    Shirt, Layers, ArrowLeftRight, Store, Plus,
+    Printer, Barcode, Search, CheckCircle2, AlertCircle,
+    ArrowRight, Tag, RefreshCw, X, Box, Truck, Check, Eye
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import AppSwitcher from '@/components/AppSwitcher';
+// مصفوفة المقاسات والألوان الافتراضية
+⋮----
+// Data States
+⋮----
+// Matrix Creation Form State
+⋮----
+// New Branch State
+⋮----
+// New Transfer State
+⋮----
+// Thermal Barcode Print Modal State
+⋮----
+const fetchData = async () =>
+⋮----
+// 1. توليد صنف الملابس والمصفوفة
+const handleCreateMatrixProduct = async (e: React.FormEvent) =>
+⋮----
+// Reset Form
+⋮----
+// 2. إنشاء فرع جديد
+const handleCreateBranch = async (e: React.FormEvent) =>
+⋮----
+// 3. إرسال مناقلة بضاعة
+const handleDispatchTransfer = async () =>
+⋮----
+// 4. استلام مناقلة بضاعة
+const handleReceiveTransfer = async (transferId: string) =>
+⋮----
+// مساعد لتبديل المقاسات في المصفوفة
+const toggleSize = (size: string) =>
+⋮----
+// مساعد لتبديل الألوان في المصفوفة
+const toggleColor = (color: string) =>
+⋮----
+// تصفية المنتجات
+⋮----
+{/* Header */}
+⋮----
+{/* أزرار الهيدر العلوية في retail/page.tsx */}
+⋮----
+{/* ⬅️ أضف هذا المكون هنا */}
+⋮----
+{/* Notifications */}
+⋮----
+{/* Navigation Tabs */}
+⋮----
+{/* ==================================================== */}
+{/* TAB 1: PRODUCTS & VARIANTS LIST                     */}
+{/* ==================================================== */}
+⋮----
+onChange=
+⋮----
+{/* جدول مصفوفة المقاسات والألوان الخاصة بالموديل */}
+⋮----
+onClick=
+⋮----
+{/* ==================================================== */}
+{/* TAB 2: MATRIX GENERATOR (مُولّد المقاسات والألوان) */}
+{/* ==================================================== */}
+⋮----
+{/* الأسعار والمخزون الأولي */}
+⋮----
+{/* اختيار المقاسات (Sizes Matrix) */}
+⋮----
+{/* اختيار الألوان (Colors Matrix) */}
+⋮----
+{/* ملخص التوليد الحي */}
+⋮----
+{/* ==================================================== */}
+{/* TAB 3: STOCK TRANSFERS (مناقلات الفروع)              */}
+{/* ==================================================== */}
+⋮----
+{/* ==================================================== */}
+{/* TAB 4: BRANCHES (الفروع والمستودعات)                  */}
+{/* ==================================================== */}
+⋮----
+{/* ==================================================== */}
+{/* MODAL 1: ADD BRANCH                                  */}
+{/* ==================================================== */}
+⋮----
+{/* ==================================================== */}
+{/* MODAL 2: THERMAL BARCODE LABEL PRINT (ملصق الباركود) */}
+{/* ==================================================== */}
+⋮----
+<button onClick=
+⋮----
+{/* تصميم الملصق الفعلي للطباعة (38x25mm / 50x30mm) */}
+⋮----
+{/* رسم خطوط الباركود القياسية */}
+⋮----
+window.print();
+</file>
+
+<file path="src/components/pos/ReceiptModal.tsx">
+import React from 'react';
+import { Printer, X, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+interface ReceiptModalProps {
+    invoice: any;
+    onClose: () => void;
+}
+⋮----
+const handlePrint = () =>
+⋮----
+{/* زر الإغلاق (يختفي عند الطباعة) */}
+⋮----
+{/* بيانات الفاتورة الأساسية */}
+⋮----
+{/* أصناف الفاتورة */}
+⋮----
+{/* المجاميع المالية والضريبة */}
+⋮----
+{/* محاكاة رمز الاستجابة السريع (ZATCA QR Code) */}
+⋮----
+{/* أزرار التحكم (تخفي عند الطباعة) */}
+</file>
+
+<file path="src/components/ui/Button.tsx">
+// src/components/ui/Button.tsx
+import React from 'react';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+⋮----
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+    isLoading?: boolean;
+}
+</file>
+
+<file path="src/components/ui/Input.tsx">
+// src/components/ui/Input.tsx
+import React from 'react';
+⋮----
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+    label?: string;
+    error?: string;
+    hint?: string;
+}
+</file>
+
+<file path="src/components/AppSwitcher.tsx">
+import React, { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+    Grid, UtensilsCrossed, Shirt, Truck, Settings,
+    ShieldCheck, ExternalLink, ChevronDown, Sparkles
+} from 'lucide-react';
+⋮----
+// إغلاق القائمة عند النقر في الخارج
+⋮----
+const handleClickOutside = (event: MouseEvent) =>
+⋮----
+{/* Trigger Button */}
+⋮----
+{/* Apps Dropdown Menu */}
+⋮----
+onClick=
+</file>
+
+<file path="src/lib/api.ts">
+// src/lib/api.ts
+import axios from 'axios';
+</file>
+
+<file path=".clineignore">
+node_modules/
+.git/
+.next/
+dist/
+build/
+package-lock.json
+*.log
+.env
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="AGENTS.md">
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+</file>
+
+<file path="CLAUDE.md">
+@AGENTS.md
+</file>
+
+<file path="eslint.config.mjs">
+// Override default ignores of eslint-config-next.
+⋮----
+// Default ignores of eslint-config-next:
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+⋮----
+/* config options here */
+</file>
+
+<file path="postcss.config.mjs">
+
+</file>
+
+<file path="README.md">
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="src/app/pos/inventory/page.tsx">
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+    Package, Plus, Search, AlertTriangle, ArrowRight,
+    Barcode, Layers, TrendingUp, Edit3, CheckCircle2, AlertCircle
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import api from '@/lib/api';
+⋮----
+interface Product {
+    _id: string;
+    name: string;
+    barcode: string;
+    category: string;
+    costPrice: number;
+    sellingPrice: number;
+    stockQuantity: number;
+    minStockAlert: number;
+    unit: string;
+}
+⋮----
+// حالة مودال إضافة منتج
+⋮----
+// حالة مودال تعديل الكمية السريع
+⋮----
+const getHeaders = (authToken = token, sub = tenantSubdomain) => (
+⋮----
+const fetchInventory = async (authToken = token, sub = tenantSubdomain) =>
+⋮----
+// إضافة منتج جديد
+const handleCreateProduct = async (e: React.FormEvent) =>
+⋮----
+// تسوية وتعديل المخزون
+const handleStockAdjustment = async (e: React.FormEvent) =>
+⋮----
+{/* Header */}
+⋮----
+onClick=
+⋮----
+{/* Main Content */}
+⋮----
+{/* KPI Summary Cards */}
+⋮----
+{/* Filters */}
+⋮----
+onChange=
+⋮----
+{/* Inventory Table */}
+⋮----
+{/* نافذة إضافة منتج جديد */}
+⋮----
+{/* نافذة تعديل الكمية السريع */}
+</file>
+
+<file path="src/app/pos/reports/page.tsx">
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import api from '@/lib/api';
+import {
+    BarChart3, ArrowRight, DollarSign, TrendingUp, Percent,
+    Receipt, CreditCard, Banknote, PackageCheck, Calendar
+} from 'lucide-react';
+⋮----
+const fetchAnalytics = async () =>
+⋮----
+{/* Header */}
+⋮----
+{/* KPI Cards Grid */}
+⋮----
+{/* Payment Methods Split */}
+⋮----
+<span>
+</file>
+
+<file path="src/app/globals.css">
+@theme {
+⋮----
+@layer base {
+⋮----
+body {
+</file>
+
+<file path="src/app/layout.tsx">
+// src/app/layout.tsx
+import type { Metadata } from "next";
+⋮----
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>)
+</file>
+
+<file path="src/components/SubscriptionModal.tsx">
+import React, { useState } from 'react';
+import api from '@/lib/api';
+import { ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+interface SubscriptionModalProps {
+    appModule?: 'pos' | 'retail' | 'fleet';
+    appName?: string;
+    price?: number;
+    onSuccess?: () => void;
+}
+⋮----
+const handleSubmit = async (e: React.FormEvent) =>
+⋮----
+{/* Header */}
+⋮----
+{/* Payment Methods Info Box */}
+⋮----
+onChange=
+</file>
+
+<file path="src/app/affiliate/register/page.tsx">
+import React, { useState } from 'react';
+import api from '@/lib/api';
+import Link from 'next/link';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { DollarSign, CheckCircle2, Copy, Check } from 'lucide-react';
+⋮----
+const handleSubmit = async (e: React.FormEvent) =>
+⋮----
+const copyToClipboard = (text: string) =>
+</file>
+
+<file path="src/app/pos/settings/page.tsx">
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import api from '@/lib/api';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+    ArrowRight, Settings, CheckCircle2, AlertCircle,
+    Building2, Receipt, Phone, MapPin, Hash, FileText,
+    DollarSign, Percent, Globe, Eye, Smartphone
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+// تبديل الإعدادات المسبقة للدول
+const handleCountryPreset = (countryCode: 'EG' | 'SA' | 'OTHER') =>
+⋮----
+const fetchSettings = async () =>
+⋮----
+const handleSubmit = async (e: React.FormEvent) =>
+⋮----
+// حسابات المعاينة الحية للفاتورة
+⋮----
+{/* Header */}
+⋮----
+{/* Form Column */}
+⋮----
+{/* Preset Selection */}
+⋮----
+onChange=
+⋮----
+{/* Store Name */}
+⋮----
+{/* Tax & CR */}
+</file>
+
+<file path="src/app/register/page.tsx">
+import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import api from '@/lib/api';
+import {
+    Building2, Mail, Lock, Phone, Globe,
+    ArrowLeft, CheckCircle2, AlertCircle, Sparkles,
+    Tag, Shirt, UtensilsCrossed, Gift, Users2
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+// التقاط كود المسوق تلقائياً من رابط الإحالة (مثل: /register?ref=AMER2026 أو ?marketer=CODE)
+⋮----
+const handleSubmit = async (e: React.FormEvent) =>
+⋮----
+{/* Brand Header */}
+⋮----
+{/* Form Card */}
+⋮----
+{/* شارة كود المسوق / الخصم إن وجد */}
+⋮----
+{/* 1. اختيار النظام الأساسي لبدء التجربة المجانية */}
+⋮----
+{/* 2. بيانات المتجر والنطاق */}
+⋮----
+onChange=
+⋮----
+{/* 3. بيانات المسؤول والاتصال */}
+⋮----
+{/* 4. الحساب وكلمة المرور */}
+</file>
+
+<file path="package.json">
+{
+  "name": "sarh-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.33.0",
+    "next": "16.3.2",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="src/app/page.tsx">
+import React from 'react';
+import Link from 'next/link';
+import {
+  UtensilsCrossed, Shirt, Truck, ShieldCheck,
+  ArrowLeft, CheckCircle2, Sparkles, Zap,
+  Printer, Smartphone, Store, Barcode, Layers,
+  Globe, Clock, Award, Check, Play, RefreshCw, ArrowRightLeft
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+export default function HomePage()
+⋮----
+{/* 1. Navbar */}
+⋮----
+{/* 2. Hero Section */}
+⋮----
+{/* 3. Apps Showcase */}
+⋮----
+{/* POS App */}
+⋮----
+{/* Retail App */}
+⋮----
+{/* Fleet App */}
+⋮----
+{/* 4. Independent Pricing Section */}
+⋮----
+{/* Plan 1: POS */}
+⋮----
+{/* Plan 2: Retail */}
+⋮----
+{/* 5. Footer */}
+</file>
+
+<file path="src/app/login/page.tsx">
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
+import { Mail, Lock, ArrowLeft, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+⋮----
+const handleSubmit = async (e: React.FormEvent) =>
+⋮----
+// إذا كان المستخدم سوبر أدمن، توجيهه إلى لوحة الإدارة المركزية
+⋮----
+// التوجيه الافتراضي لبوابة المنظومة الموحدة
+⋮----
+{/* Brand Header */}
+⋮----
+{/* Login Card */}
+⋮----
+onChange=
+</file>
+
+<file path="src/app/pos/page.tsx">
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
+import api from '@/lib/api';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+    Store, ShoppingCart, Plus, Minus, CreditCard,
+    Banknote, Search, AlertCircle, Clock, KeyRound,
+    LogOut, Printer, X, Package, PowerOff,
+    Calculator, Settings, ReceiptText, RotateCcw, BarChart3,
+    ShieldAlert
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import SubscriptionModal from '@/components/SubscriptionModal';
+import AppSwitcher from '@/components/AppSwitcher';
+⋮----
+interface Product {
+    _id: string;
+    name: string;
+    barcode: string;
+    category: string;
+    sellingPrice: number;
+    stockQuantity: number;
+}
+⋮----
+interface CartItem {
+    product: Product;
+    quantity: number;
+}
+⋮----
+// حالات الاشتراك وحظر الكاشير
+⋮----
+// نوافذ الشيفت والمصروفات
+⋮----
+// المرتجعات
+⋮----
+// مراجع للباركود والاختصارات
+⋮----
+const fetchData = async () =>
+⋮----
+// معالجة اشتراك نظام الـ POS
+⋮----
+const addToCart = (product: Product) =>
+⋮----
+// مستمع الباركود والاختصارات
+⋮----
+const handleKeyDown = (e: KeyboardEvent) =>
+⋮----
+const handleLogout = () =>
+⋮----
+const handleOpenShift = async (e: React.FormEvent) =>
+⋮----
+const handleCloseShift = async (e: React.FormEvent) =>
+⋮----
+const handleAddExpense = async (e: React.FormEvent) =>
+⋮----
+const updateQuantity = (productId: string, delta: number) =>
+⋮----
+const handleSearchInvoiceForReturn = async (e: React.FormEvent) =>
+⋮----
+const handleProcessReturn = async (e: React.FormEvent) =>
+⋮----
+{/* Header */}
+⋮----
+onClick=
+⋮----
+setActualCashInput(activeShift.expectedCash.toString());
+setShowCloseShiftModal(true);
+⋮----
+{/* شارة وحالة الاشتراك */}
+⋮----
+{/* Workspace */}
+⋮----
+onChange=
+⋮----
+{/* Cart */}
+⋮----
+{/* Return Modal */}
+⋮----
+<button onClick=
+⋮----
+{/* Credit Note Receipt Modal */}
+⋮----
+{/* Shift Open Modal */}
+⋮----
+{/* Expense Modal */}
+⋮----
+{/* Shift Close Modal */}
+⋮----
+{/* Invoice Receipt Modal */}
+⋮----
+{/* Z-Report Modal */}
+⋮----
+{/* نافذة حظر الكاشير والمطالبة بالاشتراك */}
+</file>
+
+</files>

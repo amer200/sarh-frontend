@@ -21,7 +21,6 @@ export default function LoginPage() {
 
         try {
             const res = await api.post('/auth/login', { email, password });
-
             if (res.data && res.data.token) {
                 localStorage.setItem('sarh_token', res.data.token);
 
@@ -35,8 +34,8 @@ export default function LoginPage() {
                     }
                 }
 
-                if (res.data.data?.tenant?.subdomain) {
-                    localStorage.setItem('sarh_tenant_subdomain', res.data.data.tenant.subdomain);
+                if (res.data.data?.tenantId?.subdomain) {
+                    localStorage.setItem('sarh_tenant_subdomain', res.data.data.tenantId.subdomain);
                 }
 
                 // التوجيه الافتراضي لبوابة المنظومة الموحدة
