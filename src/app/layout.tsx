@@ -1,10 +1,14 @@
 // src/app/layout.tsx
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "صَرْح | SARH Cloud - بنيان أعمالك السحابي",
-  description: "المنصة السحابية المتكاملة لإدارة الأنشطة والعمليات اللوجستية ونقاط البيع في مصر والخليج",
+  title: 'صَرْح | المنظومة السحابية الموحدة',
+  description: 'إدارة نقاط البيع السريعة، شبكات التجزئة والملابس، والتوافق الضريبي',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({

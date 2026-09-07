@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Mail, Lock, ArrowLeft, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Logo } from '@/components/ui/Logo';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -21,30 +22,49 @@ export default function LoginPage() {
 
         try {
             const res = await api.post('/auth/login', { email, password });
+
             if (res.data && res.data.token) {
+                // 1. تخزين التوكن
                 localStorage.setItem('sarh_token', res.data.token);
 
-                if (res.data.data?.user) {
-                    localStorage.setItem('sarh_user', JSON.stringify(res.data.data.user));
+                // 2. قراءة بيانات المستخدم سواء جاءت مباشرة أو متداخلة (Data Normalization)
+                const user = res.data.data?.user || res.data.data;
 
-                    // إذا كان المستخدم سوبر أدمن، توجيهه إلى لوحة الإدارة المركزية
-                    if (res.data.data.user.role === 'SUPER_ADMIN') {
+                if (user) {
+                    localStorage.setItem('sarh_user', JSON.stringify(user));
+                    if (user.role) {
+                        localStorage.setItem('sarh_role', user.role);
+                    }
+
+                    // 3. التوجيه الصارم حسب الصلاحية
+                    if (user.role === 'SUPER_ADMIN') {
                         router.push('/admin');
+                        return;
+                    }
+
+                    if (user.role === 'AFFILIATE') {
+                        router.push('/affiliate/dashboard');
                         return;
                     }
                 }
 
-                if (res.data.data?.tenantId?.subdomain) {
-                    localStorage.setItem('sarh_tenant_subdomain', res.data.data.tenantId.subdomain);
+                // 4. استخراج الدومين الفرعي للمستأجر إن وجد
+                const subdomain = user?.tenantId?.subdomain || user?.tenant?.subdomain;
+                if (subdomain) {
+                    localStorage.setItem('sarh_tenant_subdomain', subdomain);
                 }
 
-                // التوجيه الافتراضي لبوابة المنظومة الموحدة
+                // 5. مسار منشآت التجار والمطاعم الافتراضي
                 router.push('/dashboard');
             } else {
                 setErrorMsg('فشل استلام توكن التوثيق من الخادم');
             }
         } catch (err: any) {
-            setErrorMsg((err.response && err.response.data && err.response.data.error) || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+            setErrorMsg(
+                err.response?.data?.error ||
+                err.response?.data?.message ||
+                'البريد الإلكتروني أو كلمة المرور غير صحيحة'
+            );
         } finally {
             setLoading(false);
         }
@@ -56,14 +76,9 @@ export default function LoginPage() {
 
                 {/* Brand Header */}
                 <div className="text-center space-y-2">
-                    <Link href="/" className="inline-flex items-center gap-2.5">
-                        <div className="w-11 h-11 rounded-2xl bg-blue-600 border border-blue-500 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-blue-600/30">
-                            ص
-                        </div>
-                        <span className="text-xl font-black tracking-wide text-white">صَرْح</span>
-                    </Link>
+                    <Logo size={48} showText={true} />
                     <h1 className="text-lg font-black text-white">تسجيل الدخول للمنظومة</h1>
-                    <p className="text-xs text-slate-400">ادخل لإدارة كاشير المطاعم، مبيعات التجزئة والملابس، أو الاشتراكات</p>
+                    <p className="text-xs text-slate-400">ادخل لإدارة كاشير المطاعم، مبيعات التجزئة، أو الاشتراكات</p>
                 </div>
 
                 {/* Login Card */}
