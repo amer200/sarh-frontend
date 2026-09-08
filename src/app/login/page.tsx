@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { Mail, Lock, ArrowLeft, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { Mail, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 
@@ -21,50 +21,52 @@ export default function LoginPage() {
         setErrorMsg('');
 
         try {
-            const res = await api.post('/auth/login', { email, password });
+            const res = await api.post('/auth/login', {
+                email: email.trim(),
+                password
+            });
 
             if (res.data && res.data.token) {
-                // 1. تخزين التوكن
+                // 1. حفظ التوكن وبيانات الجلسة
                 localStorage.setItem('sarh_token', res.data.token);
 
-                // 2. قراءة بيانات المستخدم سواء جاءت مباشرة أو متداخلة (Data Normalization)
-                const user = res.data.data?.user || res.data.data;
+                const userData = res.data.data?.user || res.data.data;
+                const userRole = userData?.role || res.data.role;
 
-                if (user) {
-                    localStorage.setItem('sarh_user', JSON.stringify(user));
-                    if (user.role) {
-                        localStorage.setItem('sarh_role', user.role);
-                    }
-
-                    // 3. التوجيه الصارم حسب الصلاحية
-                    if (user.role === 'SUPER_ADMIN') {
-                        router.push('/admin');
-                        return;
-                    }
-
-                    if (user.role === 'AFFILIATE') {
-                        router.push('/affiliate/dashboard');
-                        return;
-                    }
+                if (userData) {
+                    localStorage.setItem('sarh_user', JSON.stringify(userData));
+                }
+                if (userRole) {
+                    localStorage.setItem('sarh_role', userRole);
                 }
 
-                // 4. استخراج الدومين الفرعي للمستأجر إن وجد
-                const subdomain = user?.tenantId?.subdomain || user?.tenant?.subdomain;
+                const subdomain = userData?.tenantId?.subdomain || userData?.tenant?.subdomain;
                 if (subdomain) {
                     localStorage.setItem('sarh_tenant_subdomain', subdomain);
                 }
 
-                // 5. مسار منشآت التجار والمطاعم الافتراضي
-                router.push('/dashboard');
+                // 2. التوجيه المباشر والصلب حسب الرول
+                if (userRole === 'SUPER_ADMIN') {
+                    window.location.href = '/admin';
+                    return;
+                }
+
+                if (userRole === 'AFFILIATE') {
+                    window.location.href = '/affiliate/dashboard';
+                    return;
+                }
+
+                window.location.href = '/dashboard';
             } else {
-                setErrorMsg('فشل استلام توكن التوثيق من الخادم');
+                setErrorMsg('استجابة الخادم غير مكتملة (لم يتم استلام التوكن)');
             }
         } catch (err: any) {
-            setErrorMsg(
+            console.error('Login error:', err);
+            const backendError =
                 err.response?.data?.error ||
                 err.response?.data?.message ||
-                'البريد الإلكتروني أو كلمة المرور غير صحيحة'
-            );
+                (err.message === 'Network Error' ? 'تعذر الاتصال بخادم الباك إند (Port 5000)' : 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+            setErrorMsg(backendError);
         } finally {
             setLoading(false);
         }
@@ -85,7 +87,7 @@ export default function LoginPage() {
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 text-xs">
 
                     {errorMsg && (
-                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center gap-2">
+                        <div id="login-error-alert" className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center gap-2">
                             <AlertCircle size={16} className="shrink-0" />
                             <span>{errorMsg}</span>
                         </div>
@@ -97,6 +99,7 @@ export default function LoginPage() {
                                 <Mail size={14} className="text-blue-400" /> البريد الإلكتروني:
                             </label>
                             <input
+                                id="email-input"
                                 type="email"
                                 required
                                 placeholder="name@company.com"
@@ -111,6 +114,7 @@ export default function LoginPage() {
                                 <Lock size={14} className="text-amber-400" /> كلمة المرور:
                             </label>
                             <input
+                                id="password-input"
                                 type="password"
                                 required
                                 placeholder="••••••••"
@@ -121,6 +125,7 @@ export default function LoginPage() {
                         </div>
 
                         <Button
+                            id="login-submit-btn"
                             type="submit"
                             disabled={loading}
                             className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-xl shadow-xl transition active:scale-98"
