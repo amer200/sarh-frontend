@@ -73,26 +73,32 @@ export default function ReceiptModal({ invoice, onClose }: ReceiptModalProps) {
                 </div>
 
                 {/* المجاميع المالية والضريبة */}
-                <div className="py-3 space-y-1.5 text-xs border-b border-dashed border-slate-300 font-mono">
-                    <div className="flex justify-between text-slate-600">
-                        <span>المجموع الفرعي:</span>
-                        <span>{invoice.financials?.subtotal.toFixed(2)} SAR</span>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                        <span>ضريبة القيمة المضافة (15%):</span>
-                        <span>{invoice.financials?.taxAmount.toFixed(2)} SAR</span>
-                    </div>
-                    {invoice.financials?.discount > 0 && (
-                        <div className="flex justify-between text-rose-600">
-                            <span>الخصم:</span>
-                            <span>-{invoice.financials?.discount.toFixed(2)} SAR</span>
+                {/* المجاميع المالية والضريبة */}
+                {(() => {
+                    const currency = invoice.tenantInfo?.currency || 'ج.م';
+                    return (
+                        <div className="py-3 space-y-1.5 text-xs border-b border-dashed border-slate-300 font-mono">
+                            <div className="flex justify-between text-slate-600">
+                                <span>المجموع الفرعي:</span>
+                                <span>{invoice.financials?.subtotal.toFixed(2)} {currency}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                                <span>ضريبة القيمة المضافة:</span>
+                                <span>{invoice.financials?.taxAmount.toFixed(2)} {currency}</span>
+                            </div>
+                            {invoice.financials?.discount > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                    <span>الخصم:</span>
+                                    <span>-{invoice.financials?.discount.toFixed(2)} {currency}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-sm font-bold text-slate-900 pt-2 border-t border-slate-200">
+                                <span>الإجمالي النهائي:</span>
+                                <span>{invoice.financials?.totalAmount.toFixed(2)} {currency}</span>
+                            </div>
                         </div>
-                    )}
-                    <div className="flex justify-between text-sm font-bold text-slate-900 pt-2 border-t border-slate-200">
-                        <span>الإجمالي النهائي:</span>
-                        <span>{invoice.financials?.totalAmount.toFixed(2)} SAR</span>
-                    </div>
-                </div>
+                    );
+                })()}
 
                 {/* محاكاة رمز الاستجابة السريع (ZATCA QR Code) */}
                 <div className="py-4 text-center">

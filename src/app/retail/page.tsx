@@ -10,6 +10,65 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import AppSwitcher from '@/components/AppSwitcher';
+// مكون توليد خطوط الباركود القياسية (Code 39 Vector SVG)
+function ThermalBarcodeSVG({ value }: { value: string }) {
+    // جدول تشفير Code 39 القياسي (1 = عريض، 0 = رفيع)
+    const CODE39_ENCODING: { [key: string]: string } = {
+        '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
+        '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
+        '8': '100100100', '9': '001100100', 'A': '100001001', 'B': '001001001',
+        'C': '101001000', 'D': '000011001', 'E': '100011000', 'F': '001011000',
+        'G': '000001101', 'H': '100001100', 'I': '001001100', 'J': '000011100',
+        'K': '100000011', 'L': '001000011', 'M': '101000010', 'N': '000010011',
+        'O': '100010010', 'P': '001010010', 'Q': '000000111', 'R': '100000110',
+        'S': '001000110', 'T': '000010110', 'U': '110000001', 'V': '011000001',
+        'W': '111000000', 'X': '010010001', 'Y': '110010000', 'Z': '011010000',
+        '-': '010000101', '.': '110000100', ' ': '011000100', '$': '010101000',
+        '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100'
+    };
+
+    const cleanStr = `*${(value || '000000').toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g, '')}*`;
+    const bars: boolean[] = [];
+
+    for (let i = 0; i < cleanStr.length; i++) {
+        const pattern = CODE39_ENCODING[cleanStr[i]] || CODE39_ENCODING['0'];
+        for (let j = 0; j < 9; j++) {
+            const isWide = pattern[j] === '1';
+            const isBar = j % 2 === 0;
+            const repeat = isWide ? 2 : 1;
+            for (let r = 0; r < repeat; r++) {
+                bars.push(isBar);
+            }
+        }
+        // مسافة رفيعة فاصلة بين كل رمز
+        bars.push(false);
+    }
+
+    const barWidth = 1.5;
+    const height = 42;
+    const totalWidth = bars.length * barWidth;
+
+    return (
+        <svg
+            viewBox={`0 0 ${totalWidth} ${height}`}
+            className="w-full max-w-[200px] h-11 mx-auto"
+            style={{ shapeRendering: 'crispEdges' }}
+        >
+            {bars.map((isBlack, index) =>
+                isBlack ? (
+                    <rect
+                        key={index}
+                        x={index * barWidth}
+                        y={0}
+                        width={barWidth}
+                        height={height}
+                        fill="#000000"
+                    />
+                ) : null
+            )}
+        </svg>
+    );
+}
 // مصفوفة المقاسات والألوان الافتراضية
 const PRESET_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
 const PRESET_COLORS = ['أسود', 'أبيض', 'كحلي', 'رمادي', 'بيج', 'زيتي', 'نبيتي'];
@@ -751,12 +810,12 @@ export default function RetailDashboardPage() {
                                     <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-300">لون: {printVariant.attributes?.color}</span>
                                 </div>
 
-                                {/* رسم خطوط الباركود القياسية */}
-                                <div className="py-1 flex flex-col items-center justify-center">
-                                    <div className="font-mono text-base font-black tracking-widest leading-none">
-                                        ||||| | |||| ||| || ||||
-                                    </div>
-                                    <span className="font-mono text-xs font-bold tracking-wider mt-0.5">{printVariant.barcode}</span>
+                                {/* رسم خطوط الباركود الليزرية الحقيقية للطباعة الحرارية */}
+                                <div className="py-1.5 flex flex-col items-center justify-center">
+                                    <ThermalBarcodeSVG value={printVariant.barcode || printVariant.sku || '123456'} />
+                                    <span className="font-mono text-xs font-black tracking-widest mt-1 text-slate-900">
+                                        {printVariant.barcode}
+                                    </span>
                                 </div>
 
                                 <div className="text-sm font-black pt-1 border-t border-dashed border-slate-400 font-mono">

@@ -89,21 +89,18 @@ export default function InventoryPage() {
     };
 
     // إضافة منتج جديد
+    // إضافة منتج جديد
     const handleCreateProduct = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await axios.post(
-                'http://localhost:5000/api/v1/pos/products',
-                {
-                    ...formData,
-                    costPrice: Number(formData.costPrice) || 0,
-                    sellingPrice: Number(formData.sellingPrice),
-                    stockQuantity: Number(formData.stockQuantity) || 0,
-                    minStockAlert: Number(formData.minStockAlert) || 5
-                },
-                { headers: getHeaders() }
-            );
+            await api.post('/pos/products', {
+                ...formData,
+                costPrice: Number(formData.costPrice) || 0,
+                sellingPrice: Number(formData.sellingPrice),
+                stockQuantity: Number(formData.stockQuantity) || 0,
+                minStockAlert: Number(formData.minStockAlert) || 5
+            });
 
             setShowAddModal(false);
             setFormData({
@@ -129,14 +126,10 @@ export default function InventoryPage() {
         e.preventDefault();
         if (!adjustModalProduct) return;
         try {
-            await axios.patch(
-                'http://localhost:5000/api/v1/pos/products/stock',
-                {
-                    productId: adjustModalProduct._id,
-                    adjustmentQuantity: Number(adjustQty)
-                },
-                { headers: getHeaders() }
-            );
+            await api.patch('/pos/products/stock', {
+                productId: adjustModalProduct._id,
+                adjustmentQuantity: Number(adjustQty)
+            });
             setAdjustModalProduct(null);
             setAdjustQty('');
             fetchInventory();

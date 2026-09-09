@@ -1,3 +1,4 @@
+// src/app/admin/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8,7 +9,8 @@ import {
     AlertCircle, Eye, Search, RefreshCw, Power,
     Award, ArrowUpRight, CheckCircle2, XCircle,
     Filter, TrendingUp, MessageCircle, Sliders,
-    Layers, AlertTriangle, ChevronRight, Phone
+    Layers, AlertTriangle, ChevronRight, Phone, Unlock, Lock,
+    UtensilsCrossed, Shirt, Truck, Check, Play, Pause, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -22,10 +24,15 @@ interface Tenant {
     maxBranches?: number;
     maxCashiers?: number;
     subscription?: {
-        status: 'trial' | 'active' | 'expired';
+        status: 'trial' | 'active' | 'expired' | 'suspended';
         plan: string;
         trialEndsAt?: string;
         expiresAt?: string;
+    };
+    subscriptions?: {
+        pos?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
+        retail?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
+        fleet?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
     };
     createdAt: string;
 }
@@ -33,6 +40,7 @@ interface Tenant {
 interface PaymentProof {
     _id: string;
     tenantId: { _id: string; name: string; subdomain: string; phone?: string };
+    appModule?: string;
     amount: number;
     senderPhoneOrName: string;
     paymentMethod: string;
@@ -43,10 +51,16 @@ interface PaymentProof {
 
 const AVAILABLE_MODULES = [
     { key: 'pos', name: 'الكاشير السريع (POS)', desc: 'إصدار الفواتير وطباعة الإيصالات' },
-    { key: 'retail', name: 'إدارة التجزئة والمستودعات', desc: 'تحويلات المخزون بين الفروع' },
+    { key: 'retail', name: 'إدارة التجزئة والمستودعات', desc: 'تحويلات المخزون ومصفوفة المقاسات' },
     { key: 'zatca', name: 'الفوترة الإلكترونية (ZATCA/ETA)', desc: 'تشفير الفواتير وQR Code' },
     { key: 'kitchen', name: 'شاشة المطبخ (KDS)', desc: 'إرسال طلبات المطاعم للمطبخ لحظياً' },
     { key: 'reports', name: 'التقارير المحاسبية المتقدمة', desc: 'تحليل الأرباح والتدفقات النقدية' }
+];
+
+const MODULE_DEFINITIONS = [
+    { key: 'pos', name: 'صَرْح POS للمطاعم والكافيهات', icon: UtensilsCrossed, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+    { key: 'retail', name: 'صَرْح Retail للملابس والتجزئة', icon: Shirt, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { key: 'fleet', name: 'صَرْح Fleet للتوصيل والأسطول', icon: Truck, color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
 ];
 
 export default function SuperAdminDashboard() {
@@ -87,7 +101,32 @@ export default function SuperAdminDashboard() {
         cashiers: 1
     });
 
+    // نافذة التحكم في اشتراكات كل تطبيق للمنشأة
+    const [moduleSubModal, setModuleSubModal] = useState<{
+        open: boolean;
+        tenant: Tenant | null;
+    }>({
+        open: false,
+        tenant: null
+    });
+
+    // حماية جلسة السوبر أدمن من الضياع عند المعاينة
+    const ensureAdminSession = () => {
+        const adminToken = localStorage.getItem('sarh_admin_token');
+        if (adminToken) {
+            localStorage.setItem('sarh_token', adminToken);
+            localStorage.setItem('sarh_role', 'SUPER_ADMIN');
+        } else {
+            const currentToken = localStorage.getItem('sarh_token');
+            const role = localStorage.getItem('sarh_role');
+            if (role === 'SUPER_ADMIN' && currentToken) {
+                localStorage.setItem('sarh_admin_token', currentToken);
+            }
+        }
+    };
+
     const fetchData = async () => {
+        ensureAdminSession();
         setLoading(true);
         try {
             const [statsRes, tenantsRes, expiringRes, proofsRes, affRes] = await Promise.all([
@@ -103,6 +142,14 @@ export default function SuperAdminDashboard() {
             setExpiringTenants(expiringRes.data.data);
             setProofs(proofsRes.data.data);
             setAffiliates(affRes.data.data);
+
+            // تحديث المنشأة المفتوحة في المودال إن وجدت
+            if (moduleSubModal.tenant) {
+                const refreshed = tenantsRes.data.data.find((t: Tenant) => t._id === moduleSubModal.tenant?._id);
+                if (refreshed) {
+                    setModuleSubModal({ open: true, tenant: refreshed });
+                }
+            }
         } catch (err: any) {
             if (err.response?.status === 401 || err.response?.status === 403) {
                 localStorage.removeItem('sarh_token');
@@ -117,11 +164,13 @@ export default function SuperAdminDashboard() {
         fetchData();
     }, []);
 
-    // 1. إجراءات تمديد وتفعيل وتجميد
+    // 1. تنفيذ إجراء عام أو خاص على اشتراك المنشأة
     const handleTenantAction = async (tenantId: string, action: string, days = 7, plan = 'monthly') => {
+        ensureAdminSession();
         setActionLoading(tenantId);
         try {
-            await api.patch(`/admin/tenants/${tenantId}/subscription`, { action, days, plan });
+            const res = await api.patch(`/admin/tenants/${tenantId}/subscription`, { action, days, plan });
+            alert(res.data?.message || 'تم تحديث حالة المنشأة بنجاح');
             await fetchData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشلت معالجة الطلب');
@@ -130,27 +179,65 @@ export default function SuperAdminDashboard() {
         }
     };
 
-    // 2. الدخول كعميل (Impersonation)
+    // 2. تنفيذ إجراء على تطبيق محدد (POS أو Retail أو Fleet)
+    const handleModuleSubscriptionAction = async (
+        tenantId: string,
+        appModule: 'pos' | 'retail' | 'fleet',
+        action: 'activate_module' | 'extend_trial_module' | 'freeze_module' | 'deactivate_module',
+        payload: { plan?: 'monthly' | 'yearly'; days?: number; months?: number } = {}
+    ) => {
+        ensureAdminSession();
+        setActionLoading(`${tenantId}_${appModule}`);
+        try {
+            const res = await api.patch(`/admin/tenants/${tenantId}/subscription`, {
+                appModule,
+                action,
+                ...payload
+            });
+            alert(res.data?.message || `تم تحديث اشتراك تطبيق ${appModule.toUpperCase()} بنجاح`);
+            await fetchData();
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل تحديث اشتراك التطبيق');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // 3. الدخول كعميل (Impersonation) دون فقدان توكن الأدمن
     const handleImpersonate = async (tenantId: string) => {
         try {
+            ensureAdminSession();
             const res = await api.post(`/admin/tenants/${tenantId}/impersonate`);
             if (res.data?.data) {
                 const { token, user } = res.data.data;
+                const adminToken = localStorage.getItem('sarh_admin_token') || localStorage.getItem('sarh_token');
+                const adminUser = localStorage.getItem('sarh_user');
+
                 localStorage.setItem('sarh_token', token);
                 localStorage.setItem('sarh_user', JSON.stringify(user));
                 if (user.tenantId?.subdomain) {
                     localStorage.setItem('sarh_tenant_subdomain', user.tenantId.subdomain);
                 }
+
                 window.open('/dashboard', '_blank');
+
+                if (adminToken) {
+                    localStorage.setItem('sarh_token', adminToken);
+                    localStorage.setItem('sarh_role', 'SUPER_ADMIN');
+                }
+                if (adminUser) {
+                    localStorage.setItem('sarh_user', adminUser);
+                }
             }
         } catch (err: any) {
             alert(err.response?.data?.error || 'تعذر الدخول لحساب المتجر');
         }
     };
 
-    // 3. حفظ الحصص والتراخيص
+    // 4. حفظ الحصص والتراخيص
     const handleSaveQuotas = async () => {
         if (!quotaModal.tenant) return;
+        ensureAdminSession();
         setActionLoading(quotaModal.tenant._id);
         try {
             await api.patch(`/admin/tenants/${quotaModal.tenant._id}/quotas`, {
@@ -167,7 +254,6 @@ export default function SuperAdminDashboard() {
         }
     };
 
-    // 4. توليد رابط WhatsApp للإنقاذ من الـ Churn
     const openWhatsAppRenewal = (tenant: Tenant) => {
         const rawPhone = tenant.phone || '';
         const cleanPhone = rawPhone.replace(/\D/g, '');
@@ -180,7 +266,7 @@ export default function SuperAdminDashboard() {
                 ? new Date(tenant.subscription.trialEndsAt).toLocaleDateString('ar-EG')
                 : 'اليوم';
 
-        const text = `مرحباً أستاذ إدارة متجر (${tenant.name}) 👋\nمعكم إدارة منصة صَرْح السحابية.\nنود إحاطتكم علماً بأن فترة ${isTrial ? 'التجربة المجانية' : 'الاشتراك'} الخاصة بنقاط البيع تنتهي بتاريخ (${expiryDate}).\nلضمان استمرار عمل الكاشير والفواتير دون توقف، يمكنك تجديد الاشتراك بسهولة مع خصم خاص للمشتركين المستمرين.\nرابط منصتكم: https://${tenant.subdomain}.sarh.cloud`;
+        const text = `مرحباً أستاذ إدارة متجر (${tenant.name}) 👋\nمعكم إدارة منصة صَرْح السحابية.\nنود إحاطتكم علماً بأن فترة ${isTrial ? 'التجربة المجانية' : 'الاشتراك'} الخاصة بنقاط البيع تنتهي بتاريخ (${expiryDate}).\nلضمان استمرار عمل الكاشير والفواتير دون توقف، يمكنك تجديد الاشتراك بسهولة.\nرابط منصتكم: https://${tenant.subdomain}.sarh.cloud`;
 
         window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
     };
@@ -193,11 +279,15 @@ export default function SuperAdminDashboard() {
                 t.subdomain?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 t.phone?.includes(searchTerm);
 
+            const isFrozen = !t.isActive || t.subscription?.status === 'suspended' || t.subscription?.status === 'expired';
+            const isActive = t.isActive && t.subscription?.status === 'active';
+            const isTrial = t.isActive && t.subscription?.status === 'trial';
+
             const matchesStatus =
                 statusFilter === 'all' ||
-                (statusFilter === 'active' && t.subscription?.status === 'active') ||
-                (statusFilter === 'trial' && t.subscription?.status === 'trial') ||
-                (statusFilter === 'expired' && (t.subscription?.status === 'expired' || !t.isActive));
+                (statusFilter === 'active' && isActive) ||
+                (statusFilter === 'trial' && isTrial) ||
+                (statusFilter === 'expired' && isFrozen);
 
             return matchesSearch && matchesStatus;
         });
@@ -217,7 +307,7 @@ export default function SuperAdminDashboard() {
                             <h1 className="text-xl font-black text-white tracking-wide">
                                 منصة صَرْح السحابية • الإدارة المركزية
                             </h1>
-                            <p className="text-xs text-slate-400">إدارة الـ SaaS Unit Economics، تقليل الـ Churn، والتحكم في تراخيص المتاجر</p>
+                            <p className="text-xs text-slate-400">إدارة الـ SaaS Unit Economics، التحكم في اشتراكات كل نظام، والمسوقين</p>
                         </div>
                     </div>
 
@@ -245,7 +335,7 @@ export default function SuperAdminDashboard() {
                     </div>
                 </div>
 
-                {/* Tabs */}
+                {/* Navigation Tabs */}
                 <div className="flex flex-wrap bg-slate-900 p-1.5 rounded-2xl border border-slate-800 max-w-3xl gap-1">
                     {[
                         { id: 'overview', label: 'المؤشرات الكلية', icon: Award },
@@ -258,10 +348,10 @@ export default function SuperAdminDashboard() {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${activeTab === tab.id
-                                    ? 'bg-blue-600 text-white shadow-lg'
-                                    : tab.highlight
-                                        ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10'
-                                        : 'text-slate-400 hover:text-white'
+                                ? 'bg-blue-600 text-white shadow-lg'
+                                : tab.highlight
+                                    ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10'
+                                    : 'text-slate-400 hover:text-white'
                                 }`}
                         >
                             <tab.icon size={15} /> {tab.label}
@@ -354,87 +444,132 @@ export default function SuperAdminDashboard() {
                                     <table className="w-full text-right border-collapse">
                                         <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 text-[11px]">
                                             <tr>
-                                                <th className="p-4">اسم المنشأة</th>
-                                                <th className="p-4">النطاق</th>
-                                                <th className="p-4">الحالة</th>
-                                                <th className="p-4">الحصص (فروع/كاشير)</th>
-                                                <th className="p-4 text-center">التحكم والتراخيص</th>
+                                                <th className="p-4">اسم المنشأة والنطاق</th>
+                                                <th className="p-4">حالة الأنظمة المستقلة</th>
+                                                <th className="p-4">الحالة العامة</th>
+                                                <th className="p-4">الحصص (فروع / كاشير)</th>
+                                                <th className="p-4 text-center">إجراءات التحكم والأنظمة</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/60">
-                                            {filteredTenants.map(t => (
-                                                <tr key={t._id} className="hover:bg-slate-800/30 transition">
-                                                    <td className="p-4 font-bold text-white">{t.name}</td>
-                                                    <td className="p-4 font-mono text-slate-400">{t.subdomain}.sarh.cloud</td>
-                                                    <td className="p-4">
-                                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${t.subscription?.status === 'active' && t.isActive
-                                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                                : t.subscription?.status === 'trial'
-                                                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                                                            }`}>
-                                                            {t.subscription?.status === 'active' && t.isActive ? 'مفعل' : t.subscription?.status === 'trial' ? 'تجريبي' : 'مجمد'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-4 font-mono text-slate-300">
-                                                        {t.maxBranches || 1} فروع • {t.maxCashiers || 1} كاشير
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div className="flex items-center justify-center gap-1.5">
-                                                            {/* زر التراخيص والموديولات */}
-                                                            <button
-                                                                onClick={() => setQuotaModal({
-                                                                    open: true,
-                                                                    tenant: t,
-                                                                    modules: t.allowedModules || ['pos'],
-                                                                    branches: t.maxBranches || 1,
-                                                                    cashiers: t.maxCashiers || 1
-                                                                })}
-                                                                className="px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-[10px] font-bold border border-indigo-500/20 flex items-center gap-1"
-                                                                title="تعديل الموديولات المسموحة والحد الأقصى للفروع"
-                                                            >
-                                                                <Sliders size={12} /> التراخيص
-                                                            </button>
+                                            {filteredTenants.map(t => {
+                                                const isFrozen = !t.isActive || t.subscription?.status === 'suspended' || t.subscription?.status === 'expired';
+                                                const isActive = t.isActive && t.subscription?.status === 'active';
+                                                const posStatus = t.subscriptions?.pos?.status || 'inactive';
+                                                const retailStatus = t.subscriptions?.retail?.status || 'inactive';
+                                                const fleetStatus = t.subscriptions?.fleet?.status || 'inactive';
 
-                                                            {/* زر الدخول كعميل */}
-                                                            <button
-                                                                onClick={() => handleImpersonate(t._id)}
-                                                                className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg text-[10px] font-bold border border-blue-500/20 flex items-center gap-1"
-                                                            >
-                                                                <Eye size={12} /> دخول
-                                                            </button>
+                                                return (
+                                                    <tr key={t._id} className="hover:bg-slate-800/30 transition">
+                                                        <td className="p-4">
+                                                            <span className="font-bold text-white block">{t.name}</span>
+                                                            <span className="font-mono text-slate-400 text-[11px]">{t.subdomain}.sarh.cloud</span>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${posStatus === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                                                        posStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                                            posStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                                                                'bg-slate-800 text-slate-400'
+                                                                    }`}>
+                                                                    POS: {posStatus === 'active' ? 'نشط' : posStatus === 'trial' ? 'تجربة' : posStatus === 'expired' ? 'موقف' : 'معطل'}
+                                                                </span>
 
-                                                            <button
-                                                                onClick={() => handleTenantAction(t._id, 'extend_trial', 7)}
-                                                                className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-[10px] font-bold border border-amber-500/20"
-                                                            >
-                                                                +7 أيام
-                                                            </button>
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${retailStatus === 'active' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                                                                        retailStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                                            retailStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                                                                'bg-slate-800 text-slate-400'
+                                                                    }`}>
+                                                                    Retail: {retailStatus === 'active' ? 'نشط' : retailStatus === 'trial' ? 'تجربة' : retailStatus === 'expired' ? 'موقف' : 'معطل'}
+                                                                </span>
 
-                                                            <button
-                                                                onClick={() => handleTenantAction(t._id, 'activate_manual', 0, 'monthly')}
-                                                                className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold border border-emerald-500/20"
-                                                            >
-                                                                تفعيل شهر
-                                                            </button>
+                                                                {fleetStatus !== 'inactive' && (
+                                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                        Fleet: {fleetStatus === 'active' ? 'نشط' : 'تجربة'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border inline-block ${isFrozen
+                                                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                                                    : isActive
+                                                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                }`}>
+                                                                {isFrozen ? 'مجمد كلياً' : isActive ? 'مفعل' : 'تجريبي'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 font-mono text-slate-300">
+                                                            {t.maxBranches || 1} فروع • {t.maxCashiers || 1} كاشير
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                                {/* زر إدارة باقات كل نظام على حدة */}
+                                                                <button
+                                                                    onClick={() => setModuleSubModal({ open: true, tenant: t })}
+                                                                    className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-[10px] font-bold border border-amber-500/30 flex items-center gap-1 transition"
+                                                                    title="تفعيل أو إيقاف اشتراك كل نظام بمفرده"
+                                                                >
+                                                                    <Sliders size={12} /> باقات الأنظمة
+                                                                </button>
 
-                                                            <button
-                                                                onClick={() => handleTenantAction(t._id, 'freeze')}
-                                                                className="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-[10px] font-bold border border-rose-500/20"
-                                                            >
-                                                                تجميد
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                                {/* زر التراخيص والموديولات */}
+                                                                <button
+                                                                    onClick={() => setQuotaModal({
+                                                                        open: true,
+                                                                        tenant: t,
+                                                                        modules: t.allowedModules || ['pos'],
+                                                                        branches: t.maxBranches || 1,
+                                                                        cashiers: t.maxCashiers || 1
+                                                                    })}
+                                                                    className="px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-[10px] font-bold border border-indigo-500/20 flex items-center gap-1"
+                                                                    title="تعديل الحصص المسموحة"
+                                                                >
+                                                                    <Layers size={12} /> الحصص
+                                                                </button>
+
+                                                                {/* زر الدخول كعميل */}
+                                                                <button
+                                                                    onClick={() => handleImpersonate(t._id)}
+                                                                    className="px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg text-[10px] font-bold border border-blue-500/20 flex items-center gap-1"
+                                                                    title="معاينة لوحة المتجر"
+                                                                >
+                                                                    <Eye size={12} /> دخول
+                                                                </button>
+
+                                                                {/* تجميد أو فك تجميد شامل للمنشأة */}
+                                                                {t.isActive ? (
+                                                                    <button
+                                                                        onClick={() => handleTenantAction(t._id, 'freeze')}
+                                                                        disabled={actionLoading === t._id}
+                                                                        className="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-[10px] font-bold border border-rose-500/20 disabled:opacity-50 flex items-center gap-1"
+                                                                        title="تجميد شامل لكافة الأنظمة"
+                                                                    >
+                                                                        <Lock size={11} /> تجميد عام
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleTenantAction(t._id, 'unfreeze')}
+                                                                        disabled={actionLoading === t._id}
+                                                                        className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold border border-teal-500/20 disabled:opacity-50 flex items-center gap-1"
+                                                                        title="فك تجميد المنشأة"
+                                                                    >
+                                                                        <Unlock size={11} /> فك التجميد
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         )}
 
-                        {/* TAB 3: RADAR (EXPIRING & CHURN PREVENTION) */}
+                        {/* TAB 3: RADAR */}
                         {activeTab === 'radar' && (
                             <div className="space-y-4">
                                 <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-300">
@@ -462,8 +597,7 @@ export default function SuperAdminDashboard() {
                                                         <h3 className="font-bold text-white text-sm">{t.name}</h3>
                                                         <p className="text-[11px] text-slate-400 font-mono">{t.subdomain}.sarh.cloud</p>
                                                     </div>
-                                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono ${daysLeft <= 0 ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                                        }`}>
+                                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono ${daysLeft <= 0 ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
                                                         {daysLeft <= 0 ? 'منتهي الآن' : `متبقي ${daysLeft} يوم`}
                                                     </span>
                                                 </div>
@@ -516,6 +650,11 @@ export default function SuperAdminDashboard() {
                                                     <div>
                                                         <h3 className="font-bold text-white text-sm">{p.tenantId?.name}</h3>
                                                         <p className="text-[11px] text-slate-400 font-mono">{p.tenantId?.subdomain}.sarh.cloud</p>
+                                                        {p.appModule && (
+                                                            <span className="inline-block mt-1 uppercase font-mono text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">
+                                                                تطبيق: {p.appModule}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-xl font-mono font-bold">
                                                         {p.amount} ج.م
@@ -543,7 +682,7 @@ export default function SuperAdminDashboard() {
                                                 <div className="grid grid-cols-3 gap-1.5 pt-1">
                                                     <Button
                                                         onClick={() => {
-                                                            if (confirm('تفعيل شهر؟')) {
+                                                            if (confirm('تفعيل شهر لهذا التطبيق؟')) {
                                                                 api.post('/subscriptions/admin/approve', { proofId: p._id, durationMonths: 1 }).then(fetchData);
                                                             }
                                                         }}
@@ -553,7 +692,7 @@ export default function SuperAdminDashboard() {
                                                     </Button>
                                                     <Button
                                                         onClick={() => {
-                                                            if (confirm('تفعيل سنة؟')) {
+                                                            if (confirm('تفعيل سنة لهذا التطبيق؟')) {
                                                                 api.post('/subscriptions/admin/approve', { proofId: p._id, durationMonths: 12 }).then(fetchData);
                                                             }
                                                         }}
@@ -583,19 +722,33 @@ export default function SuperAdminDashboard() {
                                         <tr>
                                             <th className="p-4">اسم المسوق</th>
                                             <th className="p-4">البريد الإلكتروني</th>
+                                            <th className="p-4">الهاتف</th>
                                             <th className="p-4">كود الإحالة</th>
-                                            <th className="p-4">رصيد الأرباح</th>
+                                            <th className="p-4">نسبة العمولة</th>
+                                            <th className="p-4">إجمالي الأرباح</th>
+                                            <th className="p-4">الرصيد المتاح</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-800/60">
-                                        {affiliates.map(aff => (
-                                            <tr key={aff._id} className="hover:bg-slate-800/30 transition">
-                                                <td className="p-4 font-bold text-white">{aff.name}</td>
-                                                <td className="p-4 font-mono text-slate-400">{aff.email}</td>
-                                                <td className="p-4 font-mono text-emerald-400 font-bold">{aff.referralCode || '-'}</td>
-                                                <td className="p-4 font-mono text-white font-bold">{aff.balance || 0} ج.م</td>
+                                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                                        {affiliates.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="text-center py-8 text-slate-500 font-sans">
+                                                    لا يوجد مسوقين مسجلين بعد.
+                                                </td>
                                             </tr>
-                                        ))}
+                                        ) : (
+                                            affiliates.map(aff => (
+                                                <tr key={aff._id} className="hover:bg-slate-800/30 transition">
+                                                    <td className="p-4 font-bold text-white font-sans">{aff.name}</td>
+                                                    <td className="p-4 text-slate-400">{aff.email}</td>
+                                                    <td className="p-4 text-slate-400">{aff.phone || '-'}</td>
+                                                    <td className="p-4 text-emerald-400 font-bold">{aff.referralCode || '-'}</td>
+                                                    <td className="p-4 text-slate-300 font-sans">{aff.commissionRate || '25%'}</td>
+                                                    <td className="p-4 text-slate-300 font-bold">{aff.totalEarned || 0} ج.م</td>
+                                                    <td className="p-4 text-emerald-400 font-bold">{aff.balance || 0} ج.م</td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -603,14 +756,145 @@ export default function SuperAdminDashboard() {
                     </>
                 )}
 
-                {/* MODAL: التحكم في الحصص والموديولات (QUOTA & MODULE MANAGER) */}
+                {/* ========================================================================= */}
+                {/* MODAL 1: نافذة التحكم في اشتراك كل موديول مستقل للمنشأة                     */}
+                {/* ========================================================================= */}
+                {moduleSubModal.open && moduleSubModal.tenant && (
+                    <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-2xl w-full space-y-5 shadow-2xl text-xs max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                                <div>
+                                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                                        <Sliders size={16} className="text-amber-400" /> إدارة باقات واشتراكات أنظمة المنشأة
+                                    </h3>
+                                    <p className="text-[11px] text-slate-400 font-mono">{moduleSubModal.tenant.name} ({moduleSubModal.tenant.subdomain}.sarh.cloud)</p>
+                                </div>
+                                <button
+                                    onClick={() => setModuleSubModal({ open: false, tenant: null })}
+                                    className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-800"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <p className="text-slate-400 text-[11px] leading-relaxed">
+                                يمكنك هنا تفعيل أو تمديد أو إيقاف كل تطبيق بشكل مستقل تماماً؛ إيقاف كاشير المطاعم لن يؤثر على كاشير الملابس أو العكس.
+                            </p>
+
+                            <div className="space-y-4">
+                                {MODULE_DEFINITIONS.map(modDef => {
+                                    const tenantSub = moduleSubModal.tenant?.subscriptions
+                                        ? (moduleSubModal.tenant.subscriptions as any)[modDef.key]
+                                        : null;
+
+                                    const status = tenantSub?.status || 'inactive';
+                                    const plan = tenantSub?.plan || 'none';
+                                    const expiry = tenantSub?.expiresAt
+                                        ? new Date(tenantSub.expiresAt)
+                                        : tenantSub?.trialEndsAt
+                                            ? new Date(tenantSub.trialEndsAt)
+                                            : null;
+
+                                    const isLoading = actionLoading === `${moduleSubModal.tenant?._id}_${modDef.key}`;
+
+                                    return (
+                                        <div key={modDef.key} className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className={`w-8 h-8 rounded-xl ${modDef.bg} ${modDef.color} flex items-center justify-center shrink-0`}>
+                                                        <modDef.icon size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-white text-xs">{modDef.name}</h4>
+                                                        <span className="text-[10px] text-slate-400 font-mono">
+                                                            {expiry ? `ينتهي: ${expiry.toLocaleDateString('ar-EG')}` : 'لم يحدد تاريخ'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                        status === 'trial' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                            status === 'expired' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                                                                'bg-slate-800 text-slate-400'
+                                                    }`}>
+                                                    {status === 'active' ? `نشط (${plan})` :
+                                                        status === 'trial' ? 'تجربة مجانية' :
+                                                            status === 'expired' ? 'موقف / منتهي' :
+                                                                'غير مشترك (معطل)'}
+                                                </span>
+                                            </div>
+
+                                            {/* أزرار التحكم الفوري في اشتراك هذا النظام */}
+                                            <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-850">
+                                                <button
+                                                    disabled={isLoading}
+                                                    onClick={() => handleModuleSubscriptionAction(moduleSubModal.tenant!._id, modDef.key as any, 'activate_module', { plan: 'monthly', months: 1 })}
+                                                    className="px-2.5 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/30 text-emerald-400 rounded-lg text-[11px] font-bold border border-emerald-500/30 disabled:opacity-50 flex items-center gap-1 transition"
+                                                >
+                                                    <Check size={12} /> تفعيل شهر
+                                                </button>
+
+                                                <button
+                                                    disabled={isLoading}
+                                                    onClick={() => handleModuleSubscriptionAction(moduleSubModal.tenant!._id, modDef.key as any, 'activate_module', { plan: 'yearly', months: 12 })}
+                                                    className="px-2.5 py-1.5 bg-blue-600/15 hover:bg-blue-600/30 text-blue-400 rounded-lg text-[11px] font-bold border border-blue-500/30 disabled:opacity-50 flex items-center gap-1 transition"
+                                                >
+                                                    <Award size={12} /> تفعيل سنة
+                                                </button>
+
+                                                <button
+                                                    disabled={isLoading}
+                                                    onClick={() => handleModuleSubscriptionAction(moduleSubModal.tenant!._id, modDef.key as any, 'extend_trial_module', { days: 7 })}
+                                                    className="px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 rounded-lg text-[11px] font-bold border border-amber-500/30 disabled:opacity-50 flex items-center gap-1 transition"
+                                                >
+                                                    <Play size={12} /> +7 أيام تجربة
+                                                </button>
+
+                                                <button
+                                                    disabled={isLoading || status === 'expired'}
+                                                    onClick={() => handleModuleSubscriptionAction(moduleSubModal.tenant!._id, modDef.key as any, 'freeze_module')}
+                                                    className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 rounded-lg text-[11px] font-bold border border-rose-500/30 disabled:opacity-50 flex items-center gap-1 transition"
+                                                >
+                                                    <Pause size={12} /> إيقاف النظام
+                                                </button>
+
+                                                <button
+                                                    disabled={isLoading || status === 'inactive'}
+                                                    onClick={() => {
+                                                        if (confirm(`تعطيل نظام (${modDef.name}) كلياً للمنشأة؟`)) {
+                                                            handleModuleSubscriptionAction(moduleSubModal.tenant!._id, modDef.key as any, 'deactivate_module');
+                                                        }
+                                                    }}
+                                                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-[11px] font-bold disabled:opacity-50 transition"
+                                                >
+                                                    إلغاء التفعيل
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <button
+                                    onClick={() => setModuleSubModal({ open: false, tenant: null })}
+                                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold"
+                                >
+                                    إغلاق
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL 2: الحصص والموديولات */}
                 {quotaModal.open && quotaModal.tenant && (
                     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl text-xs">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                                 <div>
                                     <h3 className="text-sm font-black text-white flex items-center gap-2">
-                                        <Sliders size={16} className="text-indigo-400" /> إدارة تراخيص المنشأة
+                                        <Sliders size={16} className="text-indigo-400" /> إدارة تراخيص وحصص المنشأة
                                     </h3>
                                     <p className="text-[11px] text-slate-400 font-mono">{quotaModal.tenant.name} ({quotaModal.tenant.subdomain})</p>
                                 </div>
@@ -622,7 +906,6 @@ export default function SuperAdminDashboard() {
                                 </button>
                             </div>
 
-                            {/* الحصص التشغيلية */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-slate-400 block mb-1 font-semibold">أقصى عدد فروع (Branches):</label>
@@ -646,9 +929,8 @@ export default function SuperAdminDashboard() {
                                 </div>
                             </div>
 
-                            {/* الموديولات المصرح بها */}
                             <div className="space-y-2">
-                                <label className="text-slate-400 block font-semibold">الموديولات المفعلة للمتجر:</label>
+                                <label className="text-slate-400 block font-semibold">الموديولات المصرح بها للمتجر:</label>
                                 <div className="space-y-2 bg-slate-950 p-3 rounded-2xl border border-slate-800">
                                     {AVAILABLE_MODULES.map(mod => {
                                         const isChecked = quotaModal.modules.includes(mod.key);
@@ -696,7 +978,7 @@ export default function SuperAdminDashboard() {
                     </div>
                 )}
 
-                {/* MODAL: صورة الإيصال المكبرة */}
+                {/* MODAL 3: فحص صورة الإيصال */}
                 {selectedProofImg && (
                     <div
                         onClick={() => setSelectedProofImg(null)}
@@ -710,7 +992,7 @@ export default function SuperAdminDashboard() {
                     </div>
                 )}
 
-                {/* MODAL: رفض الإيصال */}
+                {/* MODAL 4: رفض الإيصال */}
                 {rejectionModal.open && (
                     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl text-xs">

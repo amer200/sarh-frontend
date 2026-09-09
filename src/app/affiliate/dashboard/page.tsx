@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import {
     DollarSign,
@@ -31,9 +31,7 @@ export default function AffiliateDashboard() {
             }
 
             try {
-                const res = await axios.get('http://localhost:5000/api/v1/affiliates/dashboard', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                const res = await api.get('/affiliates/dashboard');
                 setData(res.data.data);
             } catch {
                 localStorage.removeItem('sarh_token');

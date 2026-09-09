@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import api from '@/lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-    Store, ShoppingCart, Plus, Minus, CreditCard,
+    ShoppingCart, Plus, Minus, CreditCard,
     Banknote, Search, AlertCircle, Clock, KeyRound,
     LogOut, Printer, X, Package, PowerOff,
     Calculator, Settings, ReceiptText, RotateCcw, BarChart3,
@@ -40,6 +39,10 @@ export default function PosPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeShift, setActiveShift] = useState<any>(null);
+
+    // العملة والضريبة الديناميكية من إعدادات المنشأة
+    const [currency, setCurrency] = useState('ج.م');
+    const [taxRatePercent, setTaxRatePercent] = useState(14);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -78,20 +81,28 @@ export default function PosPage() {
     // مراجع للباركود والاختصارات
     const barcodeBufferRef = useRef('');
     const lastKeyTimeRef = useRef(Date.now());
-    const stateRef = useRef({ cart, activeShift, products, checkoutLoading });
+    const stateRef = useRef({ cart, activeShift, products, checkoutLoading, taxRatePercent });
 
     useEffect(() => {
-        stateRef.current = { cart, activeShift, products, checkoutLoading };
-    }, [cart, activeShift, products, checkoutLoading]);
+        stateRef.current = { cart, activeShift, products, checkoutLoading, taxRatePercent };
+    }, [cart, activeShift, products, checkoutLoading, taxRatePercent]);
 
     const fetchData = async () => {
         try {
             setErrorMessage('');
-            const [shiftRes, prodRes, subRes] = await Promise.all([
+
+            const [shiftRes, prodRes, subRes, setRes] = await Promise.all([
                 api.get('/pos/shifts/current').catch(() => ({ data: { data: null } })),
                 api.get('/pos/products').catch(() => ({ data: { data: [] } })),
-                api.get('/subscriptions/status').catch(() => ({ data: { data: null } }))
+                api.get('/subscriptions/status').catch(() => ({ data: { data: null } })),
+                api.get('/pos/settings').catch(() => ({ data: { data: null } }))
             ]);
+
+            // ضبط العملة ونسبة الضريبة المخصصة للمنشأة
+            if (setRes.data?.data) {
+                if (setRes.data.data.currency) setCurrency(setRes.data.data.currency);
+                if (setRes.data.data.taxRate !== undefined) setTaxRatePercent(Number(setRes.data.data.taxRate));
+            }
 
             setActiveShift(shiftRes.data?.data || null);
             const prods: Product[] = prodRes.data?.data || [];
@@ -153,8 +164,14 @@ export default function PosPage() {
         });
     };
 
+    // تم تنظيف دالة الدفع وإزالة التكرار مع اعتماد نسبة الضريبة الديناميكية
     const handleCheckout = useCallback(async (paymentMethod: 'cash' | 'card') => {
-        const { cart: currentCart, activeShift: currentShift, checkoutLoading: isLoading } = stateRef.current;
+        const {
+            cart: currentCart,
+            activeShift: currentShift,
+            checkoutLoading: isLoading,
+            taxRatePercent: currentTax
+        } = stateRef.current;
 
         if (isLoading || currentCart.length === 0 || !currentShift) return;
 
@@ -162,7 +179,8 @@ export default function PosPage() {
         setErrorMessage('');
 
         const sub = currentCart.reduce((s, it) => s + it.product.sellingPrice * it.quantity, 0);
-        const tax = Number((sub * 0.14).toFixed(2));
+        const effectiveTax = currentTax !== undefined ? currentTax : 14;
+        const tax = Number(((sub * effectiveTax) / 100).toFixed(2));
         const total = Number((sub + tax).toFixed(2));
 
         try {
@@ -316,8 +334,9 @@ export default function PosPage() {
         );
     };
 
+    // حساب الضريبة والإجمالي اعتماداً على نسبة المتجر المحفوظة
     const subtotal = cart.reduce((sum, item) => sum + item.product.sellingPrice * item.quantity, 0);
-    const taxAmount = Number((subtotal * 0.14).toFixed(2));
+    const taxAmount = Number(((subtotal * taxRatePercent) / 100).toFixed(2));
     const totalAmount = Number((subtotal + taxAmount).toFixed(2));
 
     const handleSearchInvoiceForReturn = async (e: React.FormEvent) => {
@@ -541,7 +560,7 @@ export default function PosPage() {
                                             المتوفر: <span className="font-mono text-slate-200">{product.stockQuantity}</span>
                                         </span>
                                         <span className="text-sm font-black text-sky-400 font-mono">
-                                            {product.sellingPrice} ج.م
+                                            {product.sellingPrice} {currency}
                                         </span>
                                     </div>
                                 </div>
@@ -572,7 +591,7 @@ export default function PosPage() {
                                     <div className="flex-1 min-w-0">
                                         <h4 className="text-xs font-bold text-white truncate">{item.product.name}</h4>
                                         <span className="text-[11px] text-sky-400 font-mono font-bold">
-                                            {(item.product.sellingPrice * item.quantity).toFixed(2)} ج.م
+                                            {(item.product.sellingPrice * item.quantity).toFixed(2)} {currency}
                                         </span>
                                     </div>
 
@@ -602,15 +621,15 @@ export default function PosPage() {
                         <div className="space-y-1.5 text-xs text-slate-400">
                             <div className="flex justify-between">
                                 <span>المجموع الفرعي:</span>
-                                <span className="font-mono text-slate-200">{subtotal.toFixed(2)} ج.م</span>
+                                <span className="font-mono text-slate-200">{subtotal.toFixed(2)} {currency}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span>ضريبة القيمة المضافة (14%):</span>
-                                <span className="font-mono text-slate-200">{taxAmount.toFixed(2)} ج.م</span>
+                                <span>ضريبة القيمة المضافة ({taxRatePercent}%):</span>
+                                <span className="font-mono text-slate-200">{taxAmount.toFixed(2)} {currency}</span>
                             </div>
                             <div className="flex justify-between text-sm font-bold text-white border-t border-slate-800/60 pt-2">
                                 <span>الإجمالي النهائي:</span>
-                                <span className="font-mono text-sky-400 text-base">{totalAmount.toFixed(2)} ج.م</span>
+                                <span className="font-mono text-sky-400 text-base">{totalAmount.toFixed(2)} {currency}</span>
                             </div>
                         </div>
 
@@ -793,15 +812,15 @@ export default function PosPage() {
                         <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">المجموع الفرعي المسترد:</span>
-                                <span>-{creditNoteData.financials?.subtotal.toFixed(2)} ج.م</span>
+                                <span>-{creditNoteData.financials?.subtotal.toFixed(2)} {creditNoteData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">ضريبة القيمة المضافة المستردة:</span>
-                                <span>-{creditNoteData.financials?.taxAmount.toFixed(2)} ج.م</span>
+                                <span>-{creditNoteData.financials?.taxAmount.toFixed(2)} {creditNoteData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between font-bold text-sm text-rose-600 pt-1.5 border-t border-slate-200">
                                 <span className="font-sans">إجمالي المبلغ المسترد:</span>
-                                <span>-{creditNoteData.financials?.totalRefundAmount.toFixed(2)} ج.م</span>
+                                <span>-{creditNoteData.financials?.totalRefundAmount.toFixed(2)} {creditNoteData.tenantInfo?.currency || currency}</span>
                             </div>
                         </div>
 
@@ -849,7 +868,7 @@ export default function PosPage() {
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">عهدة بداية الدرج (ج.م):</label>
+                                <label className="text-xs text-slate-400 block mb-1">عهدة بداية الدرج ({currency}):</label>
                                 <input
                                     type="number"
                                     required
@@ -891,7 +910,7 @@ export default function PosPage() {
 
                         <form onSubmit={handleAddExpense} className="space-y-4">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">المبلغ المسحوب من الدرج (ج.م):</label>
+                                <label className="text-xs text-slate-400 block mb-1">المبلغ المسحوب من الدرج ({currency}):</label>
                                 <input
                                     type="number"
                                     required
@@ -952,31 +971,31 @@ export default function PosPage() {
                         <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 text-xs font-mono mb-4">
                             <div className="flex justify-between text-slate-400">
                                 <span>عهدة بداية الدرج:</span>
-                                <span className="text-white">{activeShift.openingCash?.toFixed(2)} ج.م</span>
+                                <span className="text-white">{activeShift.openingCash?.toFixed(2)} {currency}</span>
                             </div>
                             <div className="flex justify-between text-slate-400">
                                 <span>مبيعات الكاش (+):</span>
-                                <span className="text-emerald-400">{activeShift.cashSales?.toFixed(2)} ج.م</span>
+                                <span className="text-emerald-400">{activeShift.cashSales?.toFixed(2)} {currency}</span>
                             </div>
                             <div className="flex justify-between text-slate-400">
                                 <span>مبيعات الفيزا:</span>
-                                <span className="text-blue-400">{activeShift.cardSales?.toFixed(2)} ج.م</span>
+                                <span className="text-blue-400">{activeShift.cardSales?.toFixed(2)} {currency}</span>
                             </div>
                             {activeShift.expenses?.length > 0 && (
                                 <div className="flex justify-between text-amber-400">
                                     <span>المصروفات النثرية (-):</span>
-                                    <span>-{activeShift.expenses.reduce((s: number, x: any) => s + x.amount, 0).toFixed(2)} ج.م</span>
+                                    <span>-{activeShift.expenses.reduce((s: number, x: any) => s + x.amount, 0).toFixed(2)} {currency}</span>
                                 </div>
                             )}
                             <div className="flex justify-between text-slate-300 font-bold pt-2 border-t border-slate-800 text-sm">
                                 <span>الكاش المتوقع في الدرج:</span>
-                                <span className="text-sky-400">{activeShift.expectedCash?.toFixed(2)} ج.م</span>
+                                <span className="text-sky-400">{activeShift.expectedCash?.toFixed(2)} {currency}</span>
                             </div>
                         </div>
 
                         <form onSubmit={handleCloseShift} className="space-y-3">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">المبلغ الفعلي المستلم في الدرج (ج.م):</label>
+                                <label className="text-xs text-slate-400 block mb-1">المبلغ الفعلي المستلم في الدرج ({currency}):</label>
                                 <input
                                     type="number"
                                     required
@@ -998,8 +1017,8 @@ export default function PosPage() {
                                     <span>حالة النقدية:</span>
                                     <span className="font-mono">
                                         {shiftDiff === 0 && 'مطابق تماماً (0.00)'}
-                                        {shiftDiff > 0 && `زيادة في الدرج: +${shiftDiff.toFixed(2)} ج.م`}
-                                        {shiftDiff < 0 && `عجز في الدرج: ${shiftDiff.toFixed(2)} ج.م`}
+                                        {shiftDiff > 0 && `زيادة في الدرج: +${shiftDiff.toFixed(2)} ${currency}`}
+                                        {shiftDiff < 0 && `عجز في الدرج: ${shiftDiff.toFixed(2)} ${currency}`}
                                     </span>
                                 </div>
                             )}
@@ -1101,15 +1120,15 @@ export default function PosPage() {
                         <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300 font-mono">
                             <div className="flex justify-between text-slate-600 font-sans">
                                 <span>المجموع الفرعي:</span>
-                                <span>{lastInvoice.financials?.subtotal.toFixed(2)} ج.م</span>
+                                <span>{lastInvoice.financials?.subtotal.toFixed(2)} {lastInvoice.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between text-slate-600 font-sans">
-                                <span>ضريبة القيمة المضافة (14%):</span>
-                                <span>{lastInvoice.financials?.taxAmount.toFixed(2)} ج.م</span>
+                                <span>ضريبة القيمة المضافة ({taxRatePercent}%):</span>
+                                <span>{lastInvoice.financials?.taxAmount.toFixed(2)} {lastInvoice.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200 font-sans">
                                 <span>الإجمالي النهائي:</span>
-                                <span className="font-mono text-base">{lastInvoice.financials?.totalAmount.toFixed(2)} ج.م</span>
+                                <span className="font-mono text-base">{lastInvoice.financials?.totalAmount.toFixed(2)} {lastInvoice.tenantInfo?.currency || currency}</span>
                             </div>
                         </div>
 
@@ -1184,19 +1203,19 @@ export default function PosPage() {
                             <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">ملخص المبيعات:</div>
                             <div className="flex justify-between">
                                 <span className="text-slate-600 font-sans">مبيعات نقدية (كاش):</span>
-                                <span>{zReportData.financialSummary?.cashSales?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.cashSales?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-600 font-sans">مبيعات الفيزا:</span>
-                                <span>{zReportData.financialSummary?.cardSales?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.cardSales?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-600 font-sans">ضريبة القيمة المضافة (14%):</span>
-                                <span>{zReportData.financialSummary?.totalTax?.toFixed(2)} ج.م</span>
+                                <span className="text-slate-600 font-sans">ضريبة القيمة المضافة ({taxRatePercent}%):</span>
+                                <span>{zReportData.financialSummary?.totalTax?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-100">
                                 <span className="font-sans">إجمالي مبيعات الوردية:</span>
-                                <span>{zReportData.financialSummary?.totalSales?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.totalSales?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                         </div>
 
@@ -1204,30 +1223,30 @@ export default function PosPage() {
                             <div className="font-bold text-slate-800 font-sans text-[11px] mb-1">جرد ومطابقة صندوق الدرج:</div>
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">عهدة البداية:</span>
-                                <span>+{zReportData.financialSummary?.openingCash?.toFixed(2)} ج.م</span>
+                                <span>+{zReportData.financialSummary?.openingCash?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between text-slate-600">
                                 <span className="font-sans">مبيعات الكاش المضافة:</span>
-                                <span>+{zReportData.financialSummary?.cashSales?.toFixed(2)} ج.م</span>
+                                <span>+{zReportData.financialSummary?.cashSales?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             {zReportData.financialSummary?.totalExpenses > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                     <span className="font-sans">المصروفات النثرية:</span>
-                                    <span>-{zReportData.financialSummary?.totalExpenses?.toFixed(2)} ج.م</span>
+                                    <span>-{zReportData.financialSummary?.totalExpenses?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                                 </div>
                             )}
                             <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
                                 <span className="font-sans">الكاش المتوقع:</span>
-                                <span>{zReportData.financialSummary?.expectedCash?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.expectedCash?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className="flex justify-between font-bold text-slate-900">
                                 <span className="font-sans">الكاش الفعلي المستلم:</span>
-                                <span>{zReportData.financialSummary?.actualCash?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.actualCash?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                             <div className={`flex justify-between font-bold text-xs pt-1 border-t border-slate-200 ${zReportData.financialSummary?.difference === 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
                                 <span className="font-sans">الفارق:</span>
-                                <span>{zReportData.financialSummary?.difference?.toFixed(2)} ج.م</span>
+                                <span>{zReportData.financialSummary?.difference?.toFixed(2)} {zReportData.tenantInfo?.currency || currency}</span>
                             </div>
                         </div>
 

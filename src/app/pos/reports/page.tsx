@@ -11,12 +11,21 @@ import {
 export default function PosReportsPage() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-
+    const [settings, setSettings] = useState({ currency: 'ج.م', taxRate: 14 });
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                const res = await api.get('/pos/analytics');
-                setData(res.data.data);
+                const [analyticsRes, settingsRes] = await Promise.all([
+                    api.get('/pos/analytics'),
+                    api.get('/pos/settings').catch(() => ({ data: { data: null } }))
+                ]);
+                setData(analyticsRes.data.data);
+                if (settingsRes.data?.data) {
+                    setSettings({
+                        currency: settingsRes.data.data.currency || 'ج.م',
+                        taxRate: settingsRes.data.data.taxRate !== undefined ? settingsRes.data.data.taxRate : 14
+                    });
+                }
             } catch (err: any) {
                 alert(err.response?.data?.error || 'فشل جلب التقارير المالية');
             } finally {
@@ -61,7 +70,7 @@ export default function PosReportsPage() {
                                     <span>إجمالي المبيعات</span>
                                     <DollarSign size={16} className="text-sky-400" />
                                 </div>
-                                <div className="text-2xl font-black text-white font-mono">{data?.totalRevenue?.toFixed(2) || '0.00'} SAR</div>
+                                <div className="text-2xl font-black text-white font-mono">{data?.totalRevenue?.toFixed(2) || '0.00'} {settings.currency}</div>
                                 <div className="text-[10px] text-slate-500">شامل ضريبة القيمة المضافة</div>
                             </div>
 
@@ -70,16 +79,16 @@ export default function PosReportsPage() {
                                     <span>صافي الأرباح التقديرية</span>
                                     <TrendingUp size={16} className="text-emerald-400" />
                                 </div>
-                                <div className="text-2xl font-black text-emerald-400 font-mono">{data?.netProfit?.toFixed(2) || '0.00'} SAR</div>
+                                <div className="text-2xl font-black text-emerald-400 font-mono">{data?.netProfit?.toFixed(2) || '0.00'} {settings.currency}</div>
                                 <div className="text-[10px] text-slate-500">بعد خصم التكلفة والضريبة</div>
                             </div>
 
                             <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-2">
                                 <div className="flex justify-between items-center text-slate-400 text-xs">
-                                    <span>ضريبة القيمة المضافة (15%)</span>
+                                    <span><span>ضريبة القيمة المضافة ({settings.taxRate}%)</span></span>
                                     <Percent size={16} className="text-amber-400" />
                                 </div>
-                                <div className="text-2xl font-black text-amber-400 font-mono">{data?.totalTax?.toFixed(2) || '0.00'} SAR</div>
+                                <div className="text-2xl font-black text-amber-400 font-mono">{data?.totalTax?.toFixed(2) || '0.00'} {settings.currency}</div>
                                 <div className="text-[10px] text-slate-500">إقرار هيئة الزكاة والضريبة</div>
                             </div>
 
@@ -89,7 +98,7 @@ export default function PosReportsPage() {
                                     <Receipt size={16} className="text-indigo-400" />
                                 </div>
                                 <div className="text-2xl font-black text-white font-mono">{data?.totalOrders || 0} عملية</div>
-                                <div className="text-[10px] text-slate-500">متوسط الفاتورة: {data?.totalOrders > 0 ? (data?.totalRevenue / data?.totalOrders).toFixed(2) : '0.00'} SAR</div>
+                                <div className="text-[10px] text-slate-500">متوسط الفاتورة: {data?.totalOrders > 0 ? (data?.totalRevenue / data?.totalOrders).toFixed(2) : '0.00'} {settings.currency}</div>
                             </div>
                         </div>
 
@@ -103,7 +112,7 @@ export default function PosReportsPage() {
                                     <div>
                                         <div className="flex justify-between mb-1 text-slate-300">
                                             <span className="font-sans">نقدياً (كاش):</span>
-                                            <span>{data?.paymentSplit?.cash?.toFixed(2) || '0.00'} SAR</span>
+                                            <span>{data?.paymentSplit?.cash?.toFixed(2) || '0.00'} {settings.currency}</span>
                                         </div>
                                         <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
                                             <div
@@ -116,7 +125,7 @@ export default function PosReportsPage() {
                                     <div>
                                         <div className="flex justify-between mb-1 text-slate-300">
                                             <span className="font-sans">شبكة / بطاقات مدى:</span>
-                                            <span>{data?.paymentSplit?.card?.toFixed(2) || '0.00'} SAR</span>
+                                            <span>{data?.paymentSplit?.card?.toFixed(2) || '0.00'} {settings.currency}</span>
                                         </div>
                                         <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
                                             <div
@@ -139,7 +148,7 @@ export default function PosReportsPage() {
                                             <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-950 rounded-xl text-xs">
                                                 <span className="text-slate-300 font-bold">{prod.name}</span>
                                                 <div className="font-mono text-slate-400">
-                                                    <span className="text-sky-400 font-bold">{prod.quantity} مباع</span> | {prod.totalSales?.toFixed(2)} SAR
+                                                    <span className="text-sky-400 font-bold">{prod.quantity} مباع</span> | {prod.totalSales?.toFixed(2)} {settings.currency}
                                                 </div>
                                             </div>
                                         ))
