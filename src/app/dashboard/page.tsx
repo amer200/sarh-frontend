@@ -11,7 +11,7 @@ import {
     RefreshCw, CreditCard, CheckCircle2, ShieldCheck,
     Copy, Check, X, Zap, DollarSign, Receipt,
     Clock, AlertTriangle, MessageCircle, ArrowUpRight,
-    Package, Layers, Store, ChevronRight
+    Package, Layers, Store, ChevronRight, Gamepad2
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -32,6 +32,23 @@ const APP_DETAILS = {
             'إصدار فواتير ضريبية مبسطة بـ QR Code متوافق مع الفوترة',
             'تقفيل وجرد الشيفتات اليومية ومطابقة العهدة (Z-Report)',
             'إدارة المصروفات النثرية والمرتجعات وإشعارات الدائن'
+        ]
+    },
+    lounge: {
+        key: 'lounge',
+        name: 'صَرْح Lounge للألعاب والبلايستيشن',
+        icon: Gamepad2,
+        color: 'text-violet-400',
+        borderColor: 'border-violet-500/30',
+        bgAccent: 'bg-violet-600/10',
+        monthlyPrice: 250,
+        yearlyPrice: 2500,
+        route: '/lounge',
+        benefits: [
+            'إدارة طاولات وغرف البلايستيشن ومحاكيات القيادة',
+            'حساب دقيق لشرائح الوقت الفردي والـ Multi',
+            'صافرة وتنبيهات بصرية لحظية عند انتهاء وقت اللعب',
+            'إدارة طلبات الكافيتريا والمشاريب والغرامات في فاتورة موحدة'
         ]
     },
     retail: {
@@ -78,7 +95,7 @@ export default function CentralDashboardPage() {
     // نافذة الاشتراك والسداد
     const [payModal, setPayModal] = useState<{
         open: boolean;
-        moduleKey: 'pos' | 'retail' | 'fleet';
+        moduleKey: 'pos' | 'retail' | 'fleet' | 'lounge';
         plan: 'monthly' | 'yearly';
     }>({
         open: false,
@@ -113,6 +130,15 @@ export default function CentralDashboardPage() {
     };
 
     useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const queryToken = params.get('auth_token');
+            if (queryToken) {
+                localStorage.setItem('sarh_token', queryToken);
+                window.history.replaceState({}, '', '/dashboard');
+            }
+        }
+
         const token = localStorage.getItem('sarh_token');
         if (!token) {
             router.replace('/login');
@@ -203,9 +229,13 @@ export default function CentralDashboardPage() {
         retailSub.status !== 'expired'
     );
 
+    const loungeSub = subscriptions?.lounge;
+    const isLoungeAccessible = Boolean(
+        loungeSub && !loungeSub.isBlocked && loungeSub.status !== 'inactive' && loungeSub.status !== 'expired'
+    );
     // دالة حماية الاختصارات السريعة وتوجيه المستخدم للتجديد في حال الانتهاء
-    const handleShortcutClick = (targetPath: string, moduleKey: 'pos' | 'retail') => {
-        const isAccessible = moduleKey === 'pos' ? isPosAccessible : isRetailAccessible;
+    const handleShortcutClick = (targetPath: string, moduleKey: 'pos' | 'retail' | 'lounge') => {
+        const isAccessible = moduleKey === 'pos' ? isPosAccessible : moduleKey === 'retail' ? isRetailAccessible : isLoungeAccessible;
         if (!isAccessible) {
             setPayModal({ open: true, moduleKey, plan: 'monthly' });
         } else {
@@ -318,10 +348,10 @@ export default function CentralDashboardPage() {
 
                     {/* ودجت الشيفت المفتوح */}
                     <div className={`border p-5 rounded-3xl space-y-2 shadow-lg ${!activeShift
-                            ? 'bg-slate-900/60 border-slate-800'
-                            : activeShift.isOverdue
-                                ? 'bg-rose-500/10 border-rose-500/30'
-                                : 'bg-slate-900 border-slate-800'
+                        ? 'bg-slate-900/60 border-slate-800'
+                        : activeShift.isOverdue
+                            ? 'bg-rose-500/10 border-rose-500/30'
+                            : 'bg-slate-900 border-slate-800'
                         }`}>
                         <div className="flex justify-between items-center text-xs">
                             <span className="font-semibold text-slate-300">الوردية الحالية</span>
@@ -418,8 +448,8 @@ export default function CentralDashboardPage() {
                                 type="button"
                                 onClick={() => handleShortcutClick('/pos', 'pos')}
                                 className={`p-3 rounded-2xl flex flex-col items-center justify-center text-center gap-1.5 transition group relative border ${isPosAccessible
-                                        ? 'bg-slate-950 hover:bg-amber-500/10 border-slate-800 hover:border-amber-500/30 cursor-pointer'
-                                        : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
+                                    ? 'bg-slate-950 hover:bg-amber-500/10 border-slate-800 hover:border-amber-500/30 cursor-pointer'
+                                    : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
                                     }`}
                             >
                                 {!isPosAccessible && (
@@ -430,14 +460,29 @@ export default function CentralDashboardPage() {
                                 <UtensilsCrossed size={18} className={`${isPosAccessible ? 'text-amber-400 group-hover:scale-110' : 'text-slate-500'} transition`} />
                                 <span className={`font-bold ${isPosAccessible ? 'text-slate-200' : 'text-slate-400'}`}>كاشير المطاعم</span>
                             </button>
-
+                            <button
+                                type="button"
+                                onClick={() => handleShortcutClick('/lounge', 'lounge')}
+                                className={`p-3 rounded-2xl flex flex-col items-center justify-center text-center gap-1.5 transition group relative border ${isLoungeAccessible
+                                    ? 'bg-slate-950 hover:bg-violet-500/10 border-slate-800 hover:border-violet-500/30 cursor-pointer'
+                                    : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
+                                    }`}
+                            >
+                                {!isLoungeAccessible && (
+                                    <span className="absolute top-1.5 left-1.5 bg-rose-500/20 text-rose-400 text-[9px] font-bold px-1.5 py-0.5 rounded-md border border-rose-500/30">
+                                        تجديد 🔒
+                                    </span>
+                                )}
+                                <Gamepad2 size={18} className={`${isLoungeAccessible ? 'text-violet-400 group-hover:scale-110' : 'text-slate-500'} transition`} />
+                                <span className={`font-bold ${isLoungeAccessible ? 'text-slate-200' : 'text-slate-400'}`}>صالة الألعاب</span>
+                            </button>
                             {/* 2. كاشير الملابس */}
                             <button
                                 type="button"
                                 onClick={() => handleShortcutClick('/retail/pos', 'retail')}
                                 className={`p-3 rounded-2xl flex flex-col items-center justify-center text-center gap-1.5 transition group relative border ${isRetailAccessible
-                                        ? 'bg-slate-950 hover:bg-blue-500/10 border-slate-800 hover:border-blue-500/30 cursor-pointer'
-                                        : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
+                                    ? 'bg-slate-950 hover:bg-blue-500/10 border-slate-800 hover:border-blue-500/30 cursor-pointer'
+                                    : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
                                     }`}
                             >
                                 {!isRetailAccessible && (
@@ -454,8 +499,8 @@ export default function CentralDashboardPage() {
                                 type="button"
                                 onClick={() => handleShortcutClick('/pos/inventory', 'pos')}
                                 className={`p-3 rounded-2xl flex flex-col items-center justify-center text-center gap-1.5 transition group relative border ${isPosAccessible
-                                        ? 'bg-slate-950 hover:bg-sky-500/10 border-slate-800 hover:border-sky-500/30 cursor-pointer'
-                                        : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
+                                    ? 'bg-slate-950 hover:bg-sky-500/10 border-slate-800 hover:border-sky-500/30 cursor-pointer'
+                                    : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
                                     }`}
                             >
                                 {!isPosAccessible && (
@@ -472,8 +517,8 @@ export default function CentralDashboardPage() {
                                 type="button"
                                 onClick={() => handleShortcutClick('/pos/reports', 'pos')}
                                 className={`p-3 rounded-2xl flex flex-col items-center justify-center text-center gap-1.5 transition group relative border ${isPosAccessible
-                                        ? 'bg-slate-950 hover:bg-emerald-500/10 border-slate-800 hover:border-emerald-500/30 cursor-pointer'
-                                        : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
+                                    ? 'bg-slate-950 hover:bg-emerald-500/10 border-slate-800 hover:border-emerald-500/30 cursor-pointer'
+                                    : 'bg-slate-950/40 border-rose-500/20 opacity-80 hover:border-rose-500/40 cursor-pointer'
                                     }`}
                             >
                                 {!isPosAccessible && (
@@ -498,7 +543,7 @@ export default function CentralDashboardPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        {(['pos', 'retail', 'fleet'] as const).map(appKey => {
+                        {(['pos', 'retail', 'fleet', 'lounge',] as const).map(appKey => {
                             const app = APP_DETAILS[appKey];
                             const subInfo = subscriptions ? subscriptions[appKey] : null;
                             const isAccessible = subInfo && !subInfo.isBlocked && subInfo.status !== 'inactive' && subInfo.status !== 'expired';
@@ -514,9 +559,9 @@ export default function CentralDashboardPage() {
                                                 <app.icon size={22} />
                                             </div>
                                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                                    isTrial ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                                        subInfo?.status === 'pending_approval' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                                                            'bg-slate-800 text-slate-400'
+                                                isTrial ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                    subInfo?.status === 'pending_approval' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                                                        'bg-slate-800 text-slate-400'
                                                 }`}>
                                                 {isPaid ? 'اشتراك مدفوع' : isTrial ? 'تجربة مجانية' : subInfo?.status === 'pending_approval' ? 'سماح 24 ساعة ⏳' : 'غير مشترك'}
                                             </span>
@@ -636,8 +681,8 @@ export default function CentralDashboardPage() {
                                             <td className="p-3 text-slate-400">{new Date(proof.createdAt).toLocaleDateString('ar-EG')}</td>
                                             <td className="p-3 text-center font-sans">
                                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border inline-block ${proof.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                        proof.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
-                                                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                    proof.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                                                        'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                                     }`}>
                                                     {proof.status === 'approved' ? 'معتمد ومفعل ✅' :
                                                         proof.status === 'rejected' ? 'مرفوض ❌' :
@@ -700,8 +745,8 @@ export default function CentralDashboardPage() {
                                                 type="button"
                                                 onClick={() => setPayModal({ ...payModal, moduleKey: appKey })}
                                                 className={`p-3 rounded-2xl border text-right transition flex items-center gap-2.5 ${isSelected
-                                                        ? `${app.bgAccent} ${app.borderColor} text-white font-black shadow-lg`
-                                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                                    ? `${app.bgAccent} ${app.borderColor} text-white font-black shadow-lg`
+                                                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                                                     }`}
                                             >
                                                 <div className={`w-8 h-8 rounded-xl ${app.bgAccent} ${app.color} flex items-center justify-center shrink-0`}>
@@ -725,8 +770,8 @@ export default function CentralDashboardPage() {
                                         type="button"
                                         onClick={() => setPayModal({ ...payModal, plan: 'monthly' })}
                                         className={`p-3.5 rounded-2xl border text-right transition ${payModal.plan === 'monthly'
-                                                ? 'bg-blue-600/10 border-blue-500 text-white font-bold shadow-lg'
-                                                : 'bg-slate-950 border-slate-800 text-slate-400'
+                                            ? 'bg-blue-600/10 border-blue-500 text-white font-bold shadow-lg'
+                                            : 'bg-slate-950 border-slate-800 text-slate-400'
                                             }`}
                                     >
                                         <div className="flex justify-between items-center">
@@ -740,8 +785,8 @@ export default function CentralDashboardPage() {
                                         type="button"
                                         onClick={() => setPayModal({ ...payModal, plan: 'yearly' })}
                                         className={`p-3.5 rounded-2xl border text-right transition ${payModal.plan === 'yearly'
-                                                ? 'bg-emerald-600/10 border-emerald-500 text-white font-bold shadow-lg'
-                                                : 'bg-slate-950 border-slate-800 text-slate-400'
+                                            ? 'bg-emerald-600/10 border-emerald-500 text-white font-bold shadow-lg'
+                                            : 'bg-slate-950 border-slate-800 text-slate-400'
                                             }`}
                                     >
                                         <div className="flex justify-between items-center">

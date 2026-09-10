@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-    Grid, UtensilsCrossed, Shirt, Truck, Settings,
-    ShieldCheck, ExternalLink, ChevronDown, Sparkles
+    Grid, UtensilsCrossed, Shirt, Truck, Gamepad2,
+    ChevronDown
 } from 'lucide-react';
 
 export default function AppSwitcher() {
@@ -13,7 +13,6 @@ export default function AppSwitcher() {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const pathname = usePathname();
 
-    // إغلاق القائمة عند النقر في الخارج
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -46,6 +45,16 @@ export default function AppSwitcher() {
             active: pathname.startsWith('/retail')
         },
         {
+            name: 'صَرْح Lounge',
+            desc: 'البلايستيشن، المحاكيات، وإدارة الطاولات',
+            href: '/lounge',
+            icon: Gamepad2,
+            color: 'text-violet-400',
+            bgColor: 'bg-violet-500/10',
+            borderColor: 'border-violet-500/20',
+            active: pathname.startsWith('/lounge')
+        },
+        {
             name: 'صَرْح Fleet',
             desc: 'الأسطول، التوصيل، والتتبع الحي',
             href: '#',
@@ -69,7 +78,6 @@ export default function AppSwitcher() {
 
     return (
         <div className="relative" ref={dropdownRef}>
-            {/* Trigger Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition text-xs font-bold shadow-sm"
@@ -79,7 +87,6 @@ export default function AppSwitcher() {
                 <ChevronDown size={13} className={`text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Apps Dropdown Menu */}
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 text-right space-y-1 animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-3 py-2 border-b border-slate-800/80">
@@ -113,8 +120,8 @@ export default function AppSwitcher() {
                                     href={app.href}
                                     onClick={() => setIsOpen(false)}
                                     className={`p-2.5 rounded-xl border transition flex items-center justify-between block ${app.active
-                                            ? 'bg-blue-600/10 border-blue-500/30 text-white'
-                                            : 'border-transparent hover:bg-slate-800 text-slate-300 hover:text-white'
+                                        ? 'bg-blue-600/10 border-blue-500/30 text-white'
+                                        : 'border-transparent hover:bg-slate-800 text-slate-300 hover:text-white'
                                         }`}
                                 >
                                     <div className="flex items-center gap-2.5">

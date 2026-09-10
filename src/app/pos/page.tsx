@@ -78,14 +78,56 @@ export default function PosPage() {
     const [returnReason, setReturnReason] = useState('طلب العميل');
     const [returnLoading, setReturnLoading] = useState(false);
 
-    // مراجع للباركود والاختصارات
+    // مراجع للباركود والاختصارات مع حالة النوافذ لتفادي التداخل
     const barcodeBufferRef = useRef('');
     const lastKeyTimeRef = useRef(Date.now());
-    const stateRef = useRef({ cart, activeShift, products, checkoutLoading, taxRatePercent });
+    const stateRef = useRef({
+        cart,
+        activeShift,
+        products,
+        checkoutLoading,
+        taxRatePercent,
+        showShiftModal,
+        showCloseShiftModal,
+        showExpenseModal,
+        showReturnModal,
+        showSubModal,
+        lastInvoice,
+        zReportData,
+        creditNoteData
+    });
 
     useEffect(() => {
-        stateRef.current = { cart, activeShift, products, checkoutLoading, taxRatePercent };
-    }, [cart, activeShift, products, checkoutLoading, taxRatePercent]);
+        stateRef.current = {
+            cart,
+            activeShift,
+            products,
+            checkoutLoading,
+            taxRatePercent,
+            showShiftModal,
+            showCloseShiftModal,
+            showExpenseModal,
+            showReturnModal,
+            showSubModal,
+            lastInvoice,
+            zReportData,
+            creditNoteData
+        };
+    }, [
+        cart,
+        activeShift,
+        products,
+        checkoutLoading,
+        taxRatePercent,
+        showShiftModal,
+        showCloseShiftModal,
+        showExpenseModal,
+        showReturnModal,
+        showSubModal,
+        lastInvoice,
+        zReportData,
+        creditNoteData
+    ]);
 
     const fetchData = async () => {
         try {
@@ -98,7 +140,6 @@ export default function PosPage() {
                 api.get('/pos/settings').catch(() => ({ data: { data: null } }))
             ]);
 
-            // ضبط العملة ونسبة الضريبة المخصصة للمنشأة
             if (setRes.data?.data) {
                 if (setRes.data.data.currency) setCurrency(setRes.data.data.currency);
                 if (setRes.data.data.taxRate !== undefined) setTaxRatePercent(Number(setRes.data.data.taxRate));
@@ -111,7 +152,6 @@ export default function PosPage() {
             const cats = Array.from(new Set(prods.map(p => p.category || 'عام')));
             setCategories(['الكل', ...cats]);
 
-            // معالجة اشتراك نظام الـ POS
             if (subRes.data && subRes.data.data) {
                 const posSub = subRes.data.data.pos || subRes.data.data.subscription || subRes.data.data;
                 if (posSub) {
@@ -131,7 +171,7 @@ export default function PosPage() {
                 localStorage.removeItem('sarh_token');
                 router.push('/login');
             } else {
-                setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في جلب البيانات');
+                setErrorMessage(err.response?.data?.error || 'فشل في جلب البيانات');
             }
         }
     };
@@ -157,14 +197,15 @@ export default function PosPage() {
             if (existing) {
                 if (existing.quantity >= product.stockQuantity) return prev;
                 return prev.map(item =>
-                    item.product._id === product._id ? { ...item, quantity: item.quantity + 1 } : item
+                    item.product._id === product._id
+                        ? { ...item, quantity: item.quantity + 1 }
+                        : item
                 );
             }
             return [...prev, { product, quantity: 1 }];
         });
     };
 
-    // تم تنظيف دالة الدفع وإزالة التكرار مع اعتماد نسبة الضريبة الديناميكية
     const handleCheckout = useCallback(async (paymentMethod: 'cash' | 'card') => {
         const {
             cart: currentCart,
@@ -194,40 +235,77 @@ export default function PosPage() {
             setCart([]);
             fetchData();
         } catch (err: any) {
-            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشلت عملية البيع');
+            setErrorMessage(err.response?.data?.error || 'فشلت عملية البيع');
         } finally {
             setCheckoutLoading(false);
         }
     }, []);
 
-    // مستمع الباركود والاختصارات
+    // مستمع الباركود والاختصارات المؤمن ضد النوافذ المنبثقة
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'F1') {
-                e.preventDefault();
-                handleCheckout('cash');
-            } else if (e.key === 'F2') {
-                e.preventDefault();
-                handleCheckout('card');
-            } else if (e.key === 'F3') {
-                e.preventDefault();
-                if (stateRef.current.activeShift) setShowExpenseModal(true);
-            } else if (e.key === 'F4') {
-                e.preventDefault();
-                if (stateRef.current.activeShift) setShowReturnModal(true);
-            } else if (e.key === 'Escape') {
+            const {
+                showShiftModal,
+                showCloseShiftModal,
+                showExpenseModal,
+                showReturnModal,
+                showSubModal,
+                lastInvoice,
+                zReportData,
+                creditNoteData
+            } = stateRef.current;
+
+            const isAnyModalOpen = Boolean(
+                showShiftModal ||
+                showCloseShiftModal ||
+                showExpenseModal ||
+                showReturnModal ||
+                showSubModal ||
+                lastInvoice ||
+                zReportData ||
+                creditNoteData
+            );
+
+            // زر الخروج يغلق أي نافذة مفتوحة
+            if (e.key === 'Escape') {
                 setShowShiftModal(false);
                 setShowCloseShiftModal(false);
                 setShowExpenseModal(false);
                 setShowReturnModal(false);
+                setShowSubModal(false);
                 setLastInvoice(null);
                 setZReportData(null);
                 setCreditNoteData(null);
+                return;
             }
 
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+            // تجميد كافة الاختصارات وقارئ الباركود إذا كانت هناك نافذة مفتوحة
+            if (isAnyModalOpen) return;
 
+            // اختصارات وظائف الكاشير السريعة
+            if (e.key === 'F1') {
+                e.preventDefault();
+                handleCheckout('cash');
+                return;
+            } else if (e.key === 'F2') {
+                e.preventDefault();
+                handleCheckout('card');
+                return;
+            } else if (e.key === 'F3') {
+                e.preventDefault();
+                if (stateRef.current.activeShift) setShowExpenseModal(true);
+                return;
+            } else if (e.key === 'F4') {
+                e.preventDefault();
+                if (stateRef.current.activeShift) setShowReturnModal(true);
+                return;
+            }
+
+            // فحص التركيز في حقول الإدخال
+            const target = e.target as HTMLElement;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+            // تجميع الباركود عبر الماسح الضوئي
             const currentTime = Date.now();
             if (currentTime - lastKeyTimeRef.current > 100) {
                 barcodeBufferRef.current = '';
@@ -261,14 +339,22 @@ export default function PosPage() {
     const handleOpenShift = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.post('/pos/shifts/open', {
+            const res = await api.post('/pos/shifts/open', {
                 cashierName: cashierNameInput,
                 openingCash: Number(openingCashInput)
             });
+            setActiveShift(res.data.data);
             setShowShiftModal(false);
             fetchData();
         } catch (err: any) {
-            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في فتح الشيفت');
+            // فك الـ Deadlock في حال وجود شيفت مفتوح مسبقاً
+            if (err.response?.data?.shift) {
+                setActiveShift(err.response.data.shift);
+                setShowShiftModal(false);
+                fetchData();
+                return;
+            }
+            setErrorMessage(err.response?.data?.error || 'فشل في فتح الشيفت');
         }
     };
 
@@ -291,7 +377,7 @@ export default function PosPage() {
             setZReportData(res.data.data);
             fetchData();
         } catch (err: any) {
-            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في إغلاق الشيفت');
+            setErrorMessage(err.response?.data?.error || 'فشل في إغلاق الشيفت');
         } finally {
             setClosingShiftLoading(false);
         }
@@ -313,7 +399,7 @@ export default function PosPage() {
             setExpenseAmount('');
             setExpenseReason('');
         } catch (err: any) {
-            setErrorMessage((err.response && err.response.data && err.response.data.error) || 'فشل في تسجيل المصروف');
+            setErrorMessage(err.response?.data?.error || 'فشل في تسجيل المصروف');
         } finally {
             setExpenseLoading(false);
         }
@@ -334,7 +420,6 @@ export default function PosPage() {
         );
     };
 
-    // حساب الضريبة والإجمالي اعتماداً على نسبة المتجر المحفوظة
     const subtotal = cart.reduce((sum, item) => sum + item.product.sellingPrice * item.quantity, 0);
     const taxAmount = Number(((subtotal * taxRatePercent) / 100).toFixed(2));
     const totalAmount = Number((subtotal + taxAmount).toFixed(2));
@@ -349,7 +434,7 @@ export default function PosPage() {
             res.data.data.items.forEach((it: any) => { initialQty[it.productId] = 0; });
             setReturnQuantities(initialQty);
         } catch (err: any) {
-            alert((err.response && err.response.data && err.response.data.error) || 'لم يتم العثور على الفاتورة أو تم إرجاعها مسبقاً');
+            alert(err.response?.data?.error || 'لم يتم العثور على الفاتورة أو تم إرجاعها مسبقاً');
             setInvoiceToReturn(null);
         }
     };
@@ -379,7 +464,7 @@ export default function PosPage() {
             setCreditNoteData(res.data.data);
             fetchData();
         } catch (err: any) {
-            alert((err.response && err.response.data && err.response.data.error) || 'فشل في إتمام المرتجع');
+            alert(err.response?.data?.error || 'فشل في إتمام المرتجع');
         } finally {
             setReturnLoading(false);
         }
@@ -1109,7 +1194,7 @@ export default function PosPage() {
                                 <span className="col-span-4 text-left">المبلغ</span>
                             </div>
                             {lastInvoice.items?.map((item: any, idx: number) => (
-                                <div key={idx} className="grid grid-cols-12 items-center py-0.5">
+                                <div key={item._id || item.productId || idx} className="grid grid-cols-12 items-center py-0.5">
                                     <span className="col-span-6 truncate font-medium">{item.name}</span>
                                     <span className="col-span-2 text-center font-mono">{item.quantity}</span>
                                     <span className="col-span-4 text-left font-mono">{item.totalPrice.toFixed(2)}</span>

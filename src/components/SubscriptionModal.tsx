@@ -6,7 +6,7 @@ import { ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 interface SubscriptionModalProps {
-    appModule?: 'pos' | 'retail' | 'fleet';
+    appModule?: 'pos' | 'retail' | 'fleet' | 'lounge';
     appName?: string;
     price?: number;
     onSuccess?: () => void;

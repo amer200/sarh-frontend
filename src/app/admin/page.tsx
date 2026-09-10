@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import {
-    ShieldCheck, Store, DollarSign, Users, Clock,
+    ShieldCheck, Gamepad2, Store, DollarSign, Users, Clock,
     AlertCircle, Eye, Search, RefreshCw, Power,
     Award, ArrowUpRight, CheckCircle2, XCircle,
     Filter, TrendingUp, MessageCircle, Sliders,
@@ -33,6 +33,8 @@ interface Tenant {
         pos?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
         retail?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
         fleet?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
+        lounge?: { status: string; plan?: string; expiresAt?: string; trialEndsAt?: string };
+
     };
     createdAt: string;
 }
@@ -49,18 +51,20 @@ interface PaymentProof {
     createdAt: string;
 }
 
-const AVAILABLE_MODULES = [
-    { key: 'pos', name: 'الكاشير السريع (POS)', desc: 'إصدار الفواتير وطباعة الإيصالات' },
-    { key: 'retail', name: 'إدارة التجزئة والمستودعات', desc: 'تحويلات المخزون ومصفوفة المقاسات' },
-    { key: 'zatca', name: 'الفوترة الإلكترونية (ZATCA/ETA)', desc: 'تشفير الفواتير وQR Code' },
-    { key: 'kitchen', name: 'شاشة المطبخ (KDS)', desc: 'إرسال طلبات المطاعم للمطبخ لحظياً' },
-    { key: 'reports', name: 'التقارير المحاسبية المتقدمة', desc: 'تحليل الأرباح والتدفقات النقدية' }
-];
-
 const MODULE_DEFINITIONS = [
     { key: 'pos', name: 'صَرْح POS للمطاعم والكافيهات', icon: UtensilsCrossed, color: 'text-amber-400', bg: 'bg-amber-500/10' },
     { key: 'retail', name: 'صَرْح Retail للملابس والتجزئة', icon: Shirt, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { key: 'lounge', name: 'صَرْح Lounge للألعاب والبلايستيشن', icon: Gamepad2, color: 'text-violet-400', bg: 'bg-violet-500/10' },
     { key: 'fleet', name: 'صَرْح Fleet للتوصيل والأسطول', icon: Truck, color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
+];
+
+const AVAILABLE_MODULES = [
+    { key: 'pos', name: 'الكاشير السريع (POS)', desc: 'إصدار الفواتير وطباعة الإيصالات' },
+    { key: 'retail', name: 'إدارة التجزئة والمستودعات', desc: 'تحويلات المخزون ومصفوفة المقاسات' },
+    { key: 'lounge', name: 'إدارة صالات البلايستيشن والمحاكيات', desc: 'عدادات الوقت والتحويل لفردي وزوجي' },
+    { key: 'zatca', name: 'الفوترة الإلكترونية (ZATCA/ETA)', desc: 'تشفير الفواتير وQR Code' },
+    { key: 'kitchen', name: 'شاشة المطبخ (KDS)', desc: 'إرسال طلبات المطاعم للمطبخ لحظياً' },
+    { key: 'reports', name: 'التقارير المحاسبية المتقدمة', desc: 'تحليل الأرباح والتدفقات النقدية' }
 ];
 
 export default function SuperAdminDashboard() {
@@ -161,6 +165,21 @@ export default function SuperAdminDashboard() {
     };
 
     useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const queryToken = params.get('auth_token');
+            if (queryToken) {
+                localStorage.setItem('sarh_token', queryToken);
+                // تنظيف الرابط من التوكن بعد حفظه
+                window.history.replaceState({}, '', '/dashboard');
+            }
+        }
+
+        const token = localStorage.getItem('sarh_token');
+        if (!token) {
+            router.replace('/login');
+            return;
+        }
         fetchData();
     }, []);
 
@@ -209,25 +228,9 @@ export default function SuperAdminDashboard() {
             ensureAdminSession();
             const res = await api.post(`/admin/tenants/${tenantId}/impersonate`);
             if (res.data?.data) {
-                const { token, user } = res.data.data;
-                const adminToken = localStorage.getItem('sarh_admin_token') || localStorage.getItem('sarh_token');
-                const adminUser = localStorage.getItem('sarh_user');
-
-                localStorage.setItem('sarh_token', token);
-                localStorage.setItem('sarh_user', JSON.stringify(user));
-                if (user.tenantId?.subdomain) {
-                    localStorage.setItem('sarh_tenant_subdomain', user.tenantId.subdomain);
-                }
-
-                window.open('/dashboard', '_blank');
-
-                if (adminToken) {
-                    localStorage.setItem('sarh_token', adminToken);
-                    localStorage.setItem('sarh_role', 'SUPER_ADMIN');
-                }
-                if (adminUser) {
-                    localStorage.setItem('sarh_user', adminUser);
-                }
+                const { token } = res.data.data;
+                // تمرير التوكن في الرابط لعزله عن نافذة الأدمن تماماً
+                window.open(`/dashboard?auth_token=${encodeURIComponent(token)}`, '_blank');
             }
         } catch (err: any) {
             alert(err.response?.data?.error || 'تعذر الدخول لحساب المتجر');
@@ -458,7 +461,7 @@ export default function SuperAdminDashboard() {
                                                 const posStatus = t.subscriptions?.pos?.status || 'inactive';
                                                 const retailStatus = t.subscriptions?.retail?.status || 'inactive';
                                                 const fleetStatus = t.subscriptions?.fleet?.status || 'inactive';
-
+                                                const loungeStatus = t.subscriptions?.lounge?.status || 'inactive';
                                                 return (
                                                     <tr key={t._id} className="hover:bg-slate-800/30 transition">
                                                         <td className="p-4">
@@ -468,17 +471,23 @@ export default function SuperAdminDashboard() {
                                                         <td className="p-4">
                                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${posStatus === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                                                        posStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                                                            posStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
-                                                                                'bg-slate-800 text-slate-400'
+                                                                    posStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                                        posStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                                                            'bg-slate-800 text-slate-400'
                                                                     }`}>
                                                                     POS: {posStatus === 'active' ? 'نشط' : posStatus === 'trial' ? 'تجربة' : posStatus === 'expired' ? 'موقف' : 'معطل'}
                                                                 </span>
-
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${loungeStatus === 'active' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
+                                                                    loungeStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                                        loungeStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                                                            'bg-slate-800 text-slate-400'
+                                                                    }`}>
+                                                                    Lounge: {loungeStatus === 'active' ? 'نشط' : loungeStatus === 'trial' ? 'تجربة' : loungeStatus === 'expired' ? 'موقف' : 'معطل'}
+                                                                </span>
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${retailStatus === 'active' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                                                                        retailStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                                                            retailStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
-                                                                                'bg-slate-800 text-slate-400'
+                                                                    retailStatus === 'trial' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                                        retailStatus === 'expired' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                                                            'bg-slate-800 text-slate-400'
                                                                     }`}>
                                                                     Retail: {retailStatus === 'active' ? 'نشط' : retailStatus === 'trial' ? 'تجربة' : retailStatus === 'expired' ? 'موقف' : 'معطل'}
                                                                 </span>
@@ -492,10 +501,10 @@ export default function SuperAdminDashboard() {
                                                         </td>
                                                         <td className="p-4">
                                                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border inline-block ${isFrozen
-                                                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                                                                    : isActive
-                                                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                                                : isActive
+                                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                                                 }`}>
                                                                 {isFrozen ? 'مجمد كلياً' : isActive ? 'مفعل' : 'تجريبي'}
                                                             </span>
@@ -813,9 +822,9 @@ export default function SuperAdminDashboard() {
                                                 </div>
 
                                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                        status === 'trial' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                                                            status === 'expired' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
-                                                                'bg-slate-800 text-slate-400'
+                                                    status === 'trial' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                        status === 'expired' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                                                            'bg-slate-800 text-slate-400'
                                                     }`}>
                                                     {status === 'active' ? `نشط (${plan})` :
                                                         status === 'trial' ? 'تجربة مجانية' :
