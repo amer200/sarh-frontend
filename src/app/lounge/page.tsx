@@ -10,7 +10,7 @@ import {
     X, Check, Plus, Minus, VolumeX, ShieldAlert,
     RefreshCw, Trash2, ShieldCheck, KeyRound,
     RotateCcw, DollarSign, History, Layers, Edit3,
-    HelpCircle, Lock, Unlock
+    HelpCircle, Lock, Unlock, Calculator
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import AppSwitcher from '@/components/AppSwitcher';
@@ -58,7 +58,7 @@ export default function LoungePosPage() {
     const [cashierNameInput, setCashierNameInput] = useState('');
     const [currentTime, setCurrentTime] = useState(Date.now());
 
-    // حالة الاشتراك المستقل
+    // حالة الاشتراك
     const [isBlocked, setIsBlocked] = useState(false);
     const [subStatus, setSubStatus] = useState('trial');
     const [daysLeft, setDaysLeft] = useState(7);
@@ -75,18 +75,9 @@ export default function LoungePosPage() {
     const [customChargePrice, setCustomChargePrice] = useState('');
 
     // أصناف الكافيتريا والمنيو
-    const [cafeProducts, setCafeProducts] = useState<ProductItem[]>([
-        { id: 'p1', name: 'شاي فتلة', price: 10, type: 'order', isCountable: false, stock: 999 },
-        { id: 'p2', name: 'قهوة تركي', price: 15, type: 'order', isCountable: false, stock: 999 },
-        { id: 'p3', name: 'بيبسي كانز', price: 15, type: 'order', isCountable: true, stock: 24 },
-        { id: 'p4', name: 'كانز كولا', price: 15, type: 'order', isCountable: true, stock: 20 },
-        { id: 'p5', name: 'ريدبول مبرد', price: 45, type: 'order', isCountable: true, stock: 12 },
-        { id: 'p6', name: 'شيبسي عائلي', price: 12, type: 'order', isCountable: true, stock: 35 },
-        { id: 'p7', name: 'مياه معدنية', price: 7, type: 'order', isCountable: true, stock: 48 },
-        { id: 'p8', name: 'إتلاف ذراع تحكم', price: 150, type: 'penalty', isCountable: false, stock: 999 }
-    ]);
+    const [cafeProducts, setCafeProducts] = useState<ProductItem[]>([]);
 
-    // الكافيتريا
+    // الكافيتريا (البيع المباشر)
     const [showCafeModal, setShowCafeModal] = useState(false);
     const [cafeCart, setCafeCart] = useState<any[]>([]);
     const [customCafeDesc, setCustomCafeDesc] = useState('');
@@ -96,6 +87,12 @@ export default function LoungePosPage() {
     const [currentBill, setCurrentBill] = useState<any>(null);
     const [shiftReport, setShiftReport] = useState<any>(null);
 
+    // تقفيل الوردية وجرد النقدية
+    const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+    const [actualCashInput, setActualCashInput] = useState('');
+    const [shiftNotes, setShiftNotes] = useState('');
+    const [closingShiftLoading, setClosingShiftLoading] = useState(false);
+
     // لوحة المدير
     const [showAdminPinModal, setShowAdminPinModal] = useState(false);
     const [adminPinInput, setAdminPinInput] = useState('');
@@ -103,12 +100,13 @@ export default function LoungePosPage() {
     const [showAdminModal, setShowAdminModal] = useState(false);
     const [adminActiveTab, setAdminActiveTab] = useState<'rooms' | 'products' | 'refunds' | 'shifts' | 'pin'>('rooms');
     const [newAdminPin, setNewAdminPin] = useState('');
+    const [shiftsHistory, setShiftsHistory] = useState<any[]>([]);
 
     // استعادة الرقم السري
     const [showForgotPinModal, setShowForgotPinModal] = useState(false);
     const [newRecoveredPin, setNewRecoveredPin] = useState('');
 
-    // إضافة وتعديل الغرف
+    // نموذج إضافة وتعديل الغرف
     const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
     const [roomForm, setRoomForm] = useState({
         name: '',
@@ -122,7 +120,7 @@ export default function LoungePosPage() {
         simPrice: 60
     });
 
-    // إضافة وتعديل الأصناف
+    // نموذج إضافة وتعديل الأصناف
     const [editingProdId, setEditingProdId] = useState<string | null>(null);
     const [prodForm, setProdForm] = useState({
         name: '',
@@ -175,25 +173,23 @@ export default function LoungePosPage() {
         setMutedRooms(prev => ({ ...prev, [roomId]: true }));
     };
 
-    // جلب بيانات الصالة المستقلة بالكامل عبر مسارات /lounge
+    // جلب البيانات وتوحيد المعرفات
     const fetchLoungeData = async () => {
         try {
-            const [roomsRes, shiftRes, menuRes, subRes] = await Promise.all([
+            const [roomsRes, shiftRes, menuRes, refundsRes, subRes] = await Promise.all([
                 api.get('/lounge/rooms').catch(() => ({ data: { data: [] } })),
                 api.get('/lounge/shifts/current').catch(() => ({ data: { data: null } })),
                 api.get('/lounge/products').catch(() => ({ data: { data: [] } })),
+                api.get('/lounge/refunds/pending').catch(() => ({ data: { data: [] } })),
                 api.get('/subscriptions/status').catch(() => ({ data: { data: null } }))
             ]);
 
             setRooms(roomsRes.data?.data || []);
             setActiveShift(shiftRes.data?.data || null);
+            setPendingRefunds(refundsRes.data?.data || []);
 
             if (menuRes.data?.data?.length > 0) {
-                const normalized = menuRes.data.data.map((p: any) => ({
-                    ...p,
-                    id: p._id || p.id
-                }));
-                setCafeProducts(normalized);
+                setCafeProducts(menuRes.data.data.map((p: any) => ({ ...p, id: p._id || p.id })));
             }
 
             if (subRes.data?.data?.lounge) {
@@ -209,6 +205,15 @@ export default function LoungePosPage() {
             console.error('Lounge fetch error:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchShiftsHistory = async () => {
+        try {
+            const res = await api.get('/lounge/shifts/history');
+            setShiftsHistory(res.data?.data || []);
+        } catch {
+            setShiftsHistory([]);
         }
     };
 
@@ -234,7 +239,7 @@ export default function LoungePosPage() {
         };
     }, []);
 
-    // فتح وردية الصالة المستقلة
+    // فتح الوردية
     const handleStartShift = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!cashierNameInput.trim()) return;
@@ -260,25 +265,33 @@ export default function LoungePosPage() {
         }
     };
 
-    // تقفيل وردية الصالة المستقلة
-    const handleEndShift = async () => {
+    // تأكيد إغلاق الوردية وجرد النقدية
+    const handleConfirmCloseShift = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!activeShift) return;
-        if (!confirm('تأكيد تقفيل وردية الصالة الحالية؟')) return;
+        setClosingShiftLoading(true);
+
         try {
             const res = await api.post('/lounge/shifts/close', {
                 shiftId: activeShift._id,
-                actualCash: activeShift.expectedCash || 0,
-                notes: 'تقفيل وردية الصالة'
+                actualCash: Number(actualCashInput) || 0,
+                notes: shiftNotes
             });
+
+            setShowCloseShiftModal(false);
+            setActualCashInput('');
+            setShiftNotes('');
             setShiftReport(res.data.data);
             setActiveShift(null);
             fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل تقفيل وردية الصالة');
+        } finally {
+            setClosingShiftLoading(false);
         }
     };
 
-    // فك أي شيفت صالة معلق
+    // فك الشيفت العالق
     const handleForceCloseStuckShift = async () => {
         if (!confirm('هل تريد إغلاق أي وردية صالة معلقة حالياً في السيرفر؟')) return;
         try {
@@ -308,7 +321,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // محاسبة الغرفة
+    // إنهاء الجلسة وإصدار الفاتورة
     const handleStopRoom = async (roomId: string) => {
         if (!confirm('تأكيد إيقاف اللعب وإصدار الفاتورة؟')) return;
         stopBuzzer(roomId);
@@ -323,6 +336,7 @@ export default function LoungePosPage() {
         }
     };
 
+    // تحويل نمط اللعب الحي
     const handleSwitchMode = async (roomId: string, newMode: 'single' | 'multi') => {
         if (!confirm(`تأكيد التحويل إلى وضع ${newMode === 'multi' ? 'Multi 👥' : 'فردي 👤'} واحتساب الوقت السابق؟`)) return;
         try {
@@ -334,7 +348,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // إضافة صنف للغرفة وتثبيته في الباك إند
+    // إضافة طلب للغرفة
     const handleAddProductToRoom = async (product: ProductItem) => {
         if (!activeManageRoom) return;
 
@@ -360,15 +374,15 @@ export default function LoungePosPage() {
             }
 
             if (product.isCountable) {
-                setCafeProducts(prev => prev.map(p => (p._id === targetProductId || p.id === targetProductId) ? { ...p, stock: p.stock - 1 } : p));
+                setCafeProducts(prev => prev.map(p => (p._id === targetProductId || p.id === targetProductId) ? { ...p, stock: Math.max(0, p.stock - 1) } : p));
             }
             fetchLoungeData();
         } catch (err: any) {
-            console.error('Failed to sync charge to DB:', err);
             alert(err.response?.data?.error || 'فشل تسجيل الطلب بالسيرفر');
         }
     };
 
+    // إضافة طلب حر أو غرامة
     const handleAddCustomCharge = async (type: 'order' | 'penalty') => {
         if (!activeManageRoom || !customChargeDesc.trim() || Number(customChargePrice) <= 0) return;
         try {
@@ -390,6 +404,19 @@ export default function LoungePosPage() {
         }
     };
 
+    // حذف صنف من الغرفة النشطة مع إرجاع المخزن بالسيرفر
+    const handleRemoveCharge = async (chargeId: string) => {
+        if (!activeManageRoom) return;
+        try {
+            const res = await api.delete(`/lounge/charges/${activeManageRoom._id}/${chargeId}`);
+            setRoomCharges(res.data.data || []);
+            fetchLoungeData();
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل حذف الطلب');
+        }
+    };
+
+    // طلب الإلغاء أو التصفير
     const handleVoidRoom = async (voidType: 'time' | 'all') => {
         if (!activeManageRoom) return;
         const confirmMsg = voidType === 'time'
@@ -412,12 +439,13 @@ export default function LoungePosPage() {
         }
     };
 
-    // التحقق من الرقم السري
+    // لوحة المدير
     const handleVerifyAdminPin = () => {
         if (adminPinInput.trim() === adminPin) {
             setShowAdminPinModal(false);
             setAdminPinInput('');
             setShowAdminModal(true);
+            fetchShiftsHistory();
         } else {
             alert('الرقم السري غير صحيح! (الافتراضي: 1234)');
         }
@@ -429,7 +457,7 @@ export default function LoungePosPage() {
         localStorage.setItem('sarh_lounge_pin', pinToSet);
         setShowForgotPinModal(false);
         setNewRecoveredPin('');
-        alert(`تم استعادة وتعيين الرقم السري بنجاح إلى: (${pinToSet})`);
+        alert(`تم تعيين الرقم السري الجديد بنجاح: (${pinToSet})`);
         setShowAdminPinModal(true);
     };
 
@@ -441,7 +469,57 @@ export default function LoungePosPage() {
         alert('تم حفظ وتحديث الرقم السري بنجاح!');
     };
 
-    // حفظ صنف المنيو في قاعدة بيانات الصالة المستقلة
+    // حفظ الغرفة في قاعدة البيانات
+    const handleSaveRoom = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!roomForm.name.trim()) return;
+
+        try {
+            await api.post('/lounge/rooms', {
+                id: editingRoomId,
+                name: roomForm.name.trim(),
+                deviceType: roomForm.deviceType,
+                supportsPS4: roomForm.supportsPS4,
+                supportsPS5: roomForm.supportsPS5,
+                rates: {
+                    ps4Single: Number(roomForm.ps4Single),
+                    ps4Multi: Number(roomForm.ps4Multi),
+                    ps5Single: Number(roomForm.ps5Single),
+                    ps5Multi: Number(roomForm.ps5Multi),
+                    simPrice: Number(roomForm.simPrice)
+                }
+            });
+
+            setEditingRoomId(null);
+            setRoomForm({
+                name: '',
+                deviceType: 'PS',
+                supportsPS4: true,
+                supportsPS5: true,
+                ps4Single: 25,
+                ps4Multi: 35,
+                ps5Single: 45,
+                ps5Multi: 60,
+                simPrice: 60
+            });
+            fetchLoungeData();
+            alert('تم حفظ بيانات وأسعار الجهاز بنجاح في السيرفر!');
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل حفظ الجهاز');
+        }
+    };
+
+    const handleDeleteRoom = async (roomId: string) => {
+        if (!confirm('هل أنت متأكد من حذف هذا الجهاز نهائياً من الصالة؟')) return;
+        try {
+            await api.delete(`/lounge/rooms/${roomId}`);
+            fetchLoungeData();
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل حذف الجهاز');
+        }
+    };
+
+    // حفظ صنف المنيو بالسيرفر
     const handleSaveProduct = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!prodForm.name.trim() || Number(prodForm.price) <= 0) return;
@@ -459,7 +537,7 @@ export default function LoungePosPage() {
             setEditingProdId(null);
             setProdForm({ name: '', price: '', type: 'order', isCountable: false, stock: '20' });
             fetchLoungeData();
-            alert('تم حفظ الصنف بنجاح في قاعدة البيانات!');
+            alert('تم حفظ الصنف بنجاح في قاعدة بيانات الصالة!');
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل حفظ الصنف');
         }
@@ -475,20 +553,32 @@ export default function LoungePosPage() {
         }
     };
 
-    // الكافيتريا والترحيل لقاعدة البيانات
+    // اعتماد أو رفض طلب المرتجع
+    const handleProcessRefund = async (refundId: string, action: 'approve' | 'reject') => {
+        try {
+            await api.post('/lounge/refunds/process', { refundId, action });
+            setPendingRefunds(prev => prev.filter(r => r._id !== refundId));
+            alert(action === 'approve' ? 'تمت الموافقة على المرتجع بنجاح.' : 'تم رفض طلب المرتجع.');
+            fetchLoungeData();
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل معالجة المرتجع');
+        }
+    };
+
+    // الكافيتريا والترحيل
     const addToCafeCart = (prod: ProductItem) => {
         if (prod.isCountable && prod.stock <= 0) {
             alert(`نفذت كمية [${prod.name}] من المخزن!`);
             return;
         }
 
+        const prodKey = prod._id || prod.id || prod.name;
         setCafeCart(prev => {
-            const prodKey = prod._id || prod.id;
-            const exists = prev.some(i => (i._id === prodKey || i.id === prodKey));
+            const exists = prev.some(i => (i._id === prodKey || i.id === prodKey || i.name === prod.name));
             if (exists) {
-                return prev.map(i => (i._id === prodKey || i.id === prodKey) ? { ...i, qty: (i.qty || 1) + 1 } : i);
+                return prev.map(i => (i._id === prodKey || i.id === prodKey || i.name === prod.name) ? { ...i, qty: (i.qty || 1) + 1 } : i);
             }
-            return [...prev, { ...prod, qty: 1 }];
+            return [...prev, { ...prod, id: prodKey, qty: 1 }];
         });
     };
 
@@ -542,11 +632,15 @@ export default function LoungePosPage() {
         setActiveManageRoom(room);
         try {
             const res = await api.get(`/lounge/rooms/${room._id}/charges`);
-            setRoomCharges(res.data.data || []);
+            setRoomCharges(res.data?.data || []);
         } catch {
             setRoomCharges([]);
         }
     };
+
+    const actualCashNum = Number(actualCashInput) || 0;
+    const expectedCashNum = activeShift ? (activeShift.expectedCash || 0) : 0;
+    const shiftDiff = actualCashNum - expectedCashNum;
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none" dir="rtl">
@@ -584,7 +678,7 @@ export default function LoungePosPage() {
                                     if (res?.data?.data) {
                                         setActiveShift(res.data.data);
                                     } else {
-                                        alert('لا توجد بيانات وردية مسجلة حالياً');
+                                        alert('لا توجد بيانات وردية صالة مسجلة حالياً');
                                     }
                                 }}
                                 className="text-violet-400 hover:text-violet-300 font-bold py-1"
@@ -650,7 +744,12 @@ export default function LoungePosPage() {
                     )}
 
                     <button
-                        onClick={handleEndShift}
+                        onClick={() => {
+                            if (activeShift) {
+                                setActualCashInput(String(activeShift.expectedCash || 0));
+                                setShowCloseShiftModal(true);
+                            }
+                        }}
                         className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition"
                     >
                         <PowerOff size={14} /> تقفيل الوردية
@@ -914,16 +1013,19 @@ export default function LoungePosPage() {
                         <div className="space-y-2">
                             <label className="text-slate-300 font-bold block">1. اختر من منيو ومشروبات الصالة (إضافة سريعة):</label>
                             <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-2xl border border-slate-800">
-                                {cafeProducts.map((prod, idx) => (
-                                    <button
-                                        key={prod._id || prod.id || `lounge-room-prod-${idx}`}
-                                        onClick={() => handleAddProductToRoom(prod)}
-                                        className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/50 text-slate-200 text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95"
-                                    >
-                                        <span>{prod.name}</span>
-                                        <span className="text-emerald-400 font-mono font-bold">({prod.price} ج)</span>
-                                    </button>
-                                ))}
+                                {cafeProducts.map((prod, idx) => {
+                                    const prodKey = prod._id || prod.id || `menu-btn-${idx}`;
+                                    return (
+                                        <button
+                                            key={prodKey}
+                                            onClick={() => handleAddProductToRoom(prod)}
+                                            className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/50 text-slate-200 text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95"
+                                        >
+                                            <span>{prod.name}</span>
+                                            <span className="text-emerald-400 font-mono font-bold">({prod.price} ج)</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -962,13 +1064,13 @@ export default function LoungePosPage() {
                             </div>
                         </div>
 
-                        {/* قائمة الطلبات المسجلة */}
+                        {/* قائمة الطلبات المسجلة مع إمكانية الحذف بالسيرفر */}
                         <div className="space-y-1.5 max-h-40 overflow-y-auto">
                             <span className="text-slate-400 font-bold block">الطلبات المسجلة على حساب الغرفة ({roomCharges.length}):</span>
                             {roomCharges.length === 0 ? (
                                 <p className="text-slate-600 text-center py-2">لا توجد طلبات مسجلة بعد</p>
                             ) : roomCharges.map((c, idx) => (
-                                <div key={c._id || `charge-${idx}`} className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center text-[11px]">
+                                <div key={c._id || `charge-row-${idx}`} className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center text-[11px]">
                                     <div className="flex items-center gap-2">
                                         <span className="text-white font-bold">{c.qty > 1 ? `${c.qty}x ` : ''}{c.description}</span>
                                         <span className={`px-1.5 py-0.2 text-[9px] rounded font-bold ${c.type === 'penalty' ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
@@ -977,6 +1079,13 @@ export default function LoungePosPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-mono text-emerald-400 font-bold">{c.price * (c.qty || 1)} ج.م</span>
+                                        <button
+                                            onClick={() => handleRemoveCharge(c._id)}
+                                            className="text-slate-500 hover:text-rose-400 transition p-1"
+                                            title="حذف الطلب ورد المخزن"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -1124,7 +1233,10 @@ export default function LoungePosPage() {
                             ].map(tab => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => setAdminActiveTab(tab.id as any)}
+                                    onClick={() => {
+                                        setAdminActiveTab(tab.id as any);
+                                        if (tab.id === 'shifts') fetchShiftsHistory();
+                                    }}
                                     className={`flex-1 py-2 rounded-xl font-bold transition flex items-center justify-center gap-1.5 ${adminActiveTab === tab.id
                                         ? 'bg-rose-600 text-white shadow-lg'
                                         : 'text-slate-400 hover:text-white'
@@ -1135,9 +1247,153 @@ export default function LoungePosPage() {
                             ))}
                         </div>
 
-                        {/* الغرف */}
+                        {/* الغرف: إضافة وتعديل وجدول حقيقي */}
                         {adminActiveTab === 'rooms' && (
                             <div className="space-y-4">
+                                <form onSubmit={handleSaveRoom} className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <h4 className="font-bold text-white text-xs">
+                                            {editingRoomId ? 'تعديل بيانات وأسعار الجهاز بالسيرفر:' : 'إضافة جهاز أو غرفة جديدة:'}
+                                        </h4>
+                                        {editingRoomId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingRoomId(null);
+                                                    setRoomForm({
+                                                        name: '',
+                                                        deviceType: 'PS',
+                                                        supportsPS4: true,
+                                                        supportsPS5: true,
+                                                        ps4Single: 25,
+                                                        ps4Multi: 35,
+                                                        ps5Single: 45,
+                                                        ps5Multi: 60,
+                                                        simPrice: 60
+                                                    });
+                                                }}
+                                                className="text-rose-400 hover:underline text-[11px]"
+                                            >
+                                                إلغاء التعديل والعودة للإضافة
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">نوع الجهاز:</label>
+                                            <select
+                                                value={roomForm.deviceType}
+                                                onChange={e => setRoomForm({ ...roomForm, deviceType: e.target.value as any })}
+                                                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"
+                                            >
+                                                <option value="PS">بلايستيشن (PlayStation)</option>
+                                                <option value="SIM">محاكي سيارات (Simulator)</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">اسم الجهاز / الغرفة:</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="مثال: غرفة 1 VIP أو ريسينج 2"
+                                                value={roomForm.name}
+                                                onChange={e => setRoomForm({ ...roomForm, name: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {roomForm.deviceType === 'PS' ? (
+                                        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-3">
+                                            <div className="flex gap-6">
+                                                <label className="flex items-center gap-2 cursor-pointer text-white font-bold">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={roomForm.supportsPS4}
+                                                        onChange={e => setRoomForm({ ...roomForm, supportsPS4: e.target.checked })}
+                                                        className="accent-violet-600 rounded"
+                                                    />
+                                                    <span>يدعم PS4</span>
+                                                </label>
+
+                                                <label className="flex items-center gap-2 cursor-pointer text-white font-bold">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={roomForm.supportsPS5}
+                                                        onChange={e => setRoomForm({ ...roomForm, supportsPS5: e.target.checked })}
+                                                        className="accent-rose-600 rounded"
+                                                    />
+                                                    <span>يدعم PS5</span>
+                                                </label>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                                                {roomForm.supportsPS4 && (
+                                                    <>
+                                                        <div>
+                                                            <span className="text-[10px] text-slate-400 block">سعر PS4 فردي:</span>
+                                                            <input
+                                                                type="number"
+                                                                value={roomForm.ps4Single}
+                                                                onChange={e => setRoomForm({ ...roomForm, ps4Single: Number(e.target.value) })}
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white font-mono"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[10px] text-slate-400 block">سعر PS4 زوجي:</span>
+                                                            <input
+                                                                type="number"
+                                                                value={roomForm.ps4Multi}
+                                                                onChange={e => setRoomForm({ ...roomForm, ps4Multi: Number(e.target.value) })}
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white font-mono"
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {roomForm.supportsPS5 && (
+                                                    <>
+                                                        <div>
+                                                            <span className="text-[10px] text-slate-400 block">سعر PS5 فردي:</span>
+                                                            <input
+                                                                type="number"
+                                                                value={roomForm.ps5Single}
+                                                                onChange={e => setRoomForm({ ...roomForm, ps5Single: Number(e.target.value) })}
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white font-mono"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[10px] text-slate-400 block">سعر PS5 زوجي:</span>
+                                                            <input
+                                                                type="number"
+                                                                value={roomForm.ps5Multi}
+                                                                onChange={e => setRoomForm({ ...roomForm, ps5Multi: Number(e.target.value) })}
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white font-mono"
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">سعر ساعة المحاكي (ج.م):</label>
+                                            <input
+                                                type="number"
+                                                value={roomForm.simPrice}
+                                                onChange={e => setRoomForm({ ...roomForm, simPrice: Number(e.target.value) })}
+                                                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <Button type="submit" className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl">
+                                        {editingRoomId ? 'تحديث وحفظ التعديلات' : '+ حفظ وإضافة الجهاز'}
+                                    </Button>
+                                </form>
+
                                 <div className="border border-slate-800 rounded-2xl overflow-hidden">
                                     <table className="w-full text-right">
                                         <thead className="bg-slate-950 text-slate-400 p-2">
@@ -1145,6 +1401,7 @@ export default function LoungePosPage() {
                                                 <th className="p-3">اسم الجهاز</th>
                                                 <th className="p-3">النوع والأنظمة المتاحة</th>
                                                 <th className="p-3">الأسعار المسجلة</th>
+                                                <th className="p-3 text-center">إجراءات</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -1163,6 +1420,35 @@ export default function LoungePosPage() {
                                                         {r.deviceType === 'SIM'
                                                             ? `${r.rates?.simPrice || 60} ج/ساعة`
                                                             : `${r.supportsPS4 !== false ? `PS4: ${r.rates?.ps4Single}ف/${r.rates?.ps4Multi}م ` : ''}${r.supportsPS5 !== false ? `| PS5: ${r.rates?.ps5Single}ف/${r.rates?.ps5Multi}م` : ''}`}
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingRoomId(r._id);
+                                                                    setRoomForm({
+                                                                        name: r.name,
+                                                                        deviceType: r.deviceType,
+                                                                        supportsPS4: r.supportsPS4 !== undefined ? r.supportsPS4 : true,
+                                                                        supportsPS5: r.supportsPS5 !== undefined ? r.supportsPS5 : true,
+                                                                        ps4Single: r.rates?.ps4Single || 25,
+                                                                        ps4Multi: r.rates?.ps4Multi || 35,
+                                                                        ps5Single: r.rates?.ps5Single || 45,
+                                                                        ps5Multi: r.rates?.ps5Multi || 60,
+                                                                        simPrice: r.rates?.simPrice || 60
+                                                                    });
+                                                                }}
+                                                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
+                                                            >
+                                                                <Edit3 size={13} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteRoom(r._id)}
+                                                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -1263,7 +1549,7 @@ export default function LoungePosPage() {
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/60 font-mono">
                                             {cafeProducts.map((p, idx) => {
-                                                const prodId = p._id || p.id || `prod-${idx}`;
+                                                const prodId = String(p._id || p.id || `prod-row-${idx}`);
                                                 return (
                                                     <tr key={prodId} className="hover:bg-slate-800/30">
                                                         <td className="p-3 font-bold text-white font-sans">{p.name}</td>
@@ -1275,14 +1561,14 @@ export default function LoungePosPage() {
                                                                     {p.stock} قطعة
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-emerald-400 font-sans text-[11px] font-bold">♾️ غير محدود (بدون عدد)</span>
+                                                                <span className="text-emerald-400 font-sans text-[11px] font-bold">♾️ غير محدود</span>
                                                             )}
                                                         </td>
                                                         <td className="p-3 text-center">
                                                             <div className="flex items-center justify-center gap-1.5">
                                                                 <button
                                                                     onClick={() => {
-                                                                        setEditingProdId(String(p._id || p.id));
+                                                                        setEditingProdId(prodId);
                                                                         setProdForm({
                                                                             name: p.name,
                                                                             price: p.price.toString(),
@@ -1296,7 +1582,7 @@ export default function LoungePosPage() {
                                                                     <Edit3 size={13} />
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => handleDeleteProduct(String(p._id || p.id))}
+                                                                    onClick={() => handleDeleteProduct(prodId)}
                                                                     className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
                                                                 >
                                                                     <Trash2 size={13} />
@@ -1312,14 +1598,52 @@ export default function LoungePosPage() {
                             </div>
                         )}
 
-                        {/* سجل الشيفت */}
-                        {adminActiveTab === 'shifts' && (
+                        {/* المرتجعات المعلقة */}
+                        {adminActiveTab === 'refunds' && (
                             <div className="space-y-3">
+                                {pendingRefunds.length === 0 ? (
+                                    <div className="text-center py-12 text-slate-500 bg-slate-950 rounded-2xl border border-slate-800">
+                                        لا توجد طلبات مرتجعات أو إلغاء معلقة حالياً.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {pendingRefunds.map((r, idx) => (
+                                            <div key={r._id || `pending-ref-${idx}`} className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 flex justify-between items-center">
+                                                <div>
+                                                    <span className="font-bold text-rose-400 block text-xs">{r.description}</span>
+                                                    <span className="text-[10px] text-slate-500 font-mono">
+                                                        المبلغ المحتسب: {r.amount} ج.م • الوقت: {new Date(r.createdAt).toLocaleTimeString('ar-EG')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex gap-1.5">
+                                                    <button
+                                                        onClick={() => handleProcessRefund(r._id, 'approve')}
+                                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[11px]"
+                                                    >
+                                                        قبول ✔️
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleProcessRefund(r._id, 'reject')}
+                                                        className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-[11px]"
+                                                    >
+                                                        رفض ✖️
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* سجل الورديات السابقة */}
+                        {adminActiveTab === 'shifts' && (
+                            <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800">
                                         <span className="text-slate-400 block mb-1 font-bold">إجمالي مبيعات الشيفت المفتوح:</span>
                                         <span className="text-2xl font-black text-emerald-400 font-mono">
-                                            {activeShift ? Number(activeShift.totalSales || activeShift.cashSales || 0).toFixed(2) : '0.00'} ج.م
+                                            {activeShift ? Number(activeShift.totalSales || 0).toFixed(2) : '0.00'} ج.م
                                         </span>
                                     </div>
                                     <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800">
@@ -1328,6 +1652,41 @@ export default function LoungePosPage() {
                                             {activeShift ? Number(activeShift.expectedCash || 0).toFixed(2) : '0.00'} ج.م
                                         </span>
                                     </div>
+                                </div>
+
+                                <div className="border border-slate-800 rounded-2xl overflow-hidden max-h-60 overflow-y-auto">
+                                    <table className="w-full text-right text-xs">
+                                        <thead className="bg-slate-950 text-slate-400">
+                                            <tr>
+                                                <th className="p-3">رقم الوردية</th>
+                                                <th className="p-3">الكاشير</th>
+                                                <th className="p-3">إجمالي المبيعات</th>
+                                                <th className="p-3">الكاش المستلم</th>
+                                                <th className="p-3">العجز / الزيادة</th>
+                                                <th className="p-3">تاريخ الإغلاق</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                                            {shiftsHistory.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="text-center py-6 text-slate-500 font-sans">
+                                                        لا توجد ورديات سابقة مؤرشفة بعد
+                                                    </td>
+                                                </tr>
+                                            ) : shiftsHistory.map((s, idx) => (
+                                                <tr key={s._id || idx} className="hover:bg-slate-800/30">
+                                                    <td className="p-3 font-bold text-white">{s.shiftNumber}</td>
+                                                    <td className="p-3 font-sans text-slate-300">{s.cashierName}</td>
+                                                    <td className="p-3 text-emerald-400 font-bold">{s.totalSales?.toFixed(2)} ج</td>
+                                                    <td className="p-3 text-white">{s.actualCash?.toFixed(2)} ج</td>
+                                                    <td className={`p-3 font-bold ${s.difference < 0 ? 'text-rose-400' : s.difference > 0 ? 'text-sky-400' : 'text-emerald-400'}`}>
+                                                        {s.difference?.toFixed(2)} ج
+                                                    </td>
+                                                    <td className="p-3 text-slate-400">{new Date(s.closedAt).toLocaleDateString('ar-EG')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}
@@ -1391,16 +1750,19 @@ export default function LoungePosPage() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto">
-                                    {cafeProducts.filter(p => p.type === 'order').map((p, idx) => (
-                                        <button
-                                            key={p._id || p.id || `cafe-prod-${idx}`}
-                                            onClick={() => addToCafeCart(p)}
-                                            className="p-3 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl text-right transition flex justify-between items-center"
-                                        >
-                                            <span className="font-bold text-white">{p.name}</span>
-                                            <span className="font-mono text-emerald-400 font-bold">{p.price} ج</span>
-                                        </button>
-                                    ))}
+                                    {cafeProducts.filter(p => p.type === 'order').map((p, idx) => {
+                                        const prodKey = p._id || p.id || `cafe-grid-${idx}`;
+                                        return (
+                                            <button
+                                                key={prodKey}
+                                                onClick={() => addToCafeCart(p)}
+                                                className="p-3 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl text-right transition flex justify-between items-center"
+                                            >
+                                                <span className="font-bold text-white">{p.name}</span>
+                                                <span className="font-mono text-emerald-400 font-bold">{p.price} ج</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -1411,7 +1773,7 @@ export default function LoungePosPage() {
                                         {cafeCart.length === 0 ? (
                                             <p className="text-slate-600 text-center py-4">السلة فارغة</p>
                                         ) : cafeCart.map((item, idx) => (
-                                            <div key={item._id || item.id || `cart-${idx}`} className="flex justify-between items-center p-1.5 bg-slate-900 rounded-lg text-[11px]">
+                                            <div key={item._id || item.id || `cart-row-${idx}`} className="flex justify-between items-center p-1.5 bg-slate-900 rounded-lg text-[11px]">
                                                 <span>{item.qty}x {item.name}</span>
                                                 <span className="font-mono font-bold text-white">{item.price * item.qty} ج</span>
                                             </div>
@@ -1501,35 +1863,134 @@ export default function LoungePosPage() {
                 </div>
             )}
 
+            {/* MODAL 7: تقفيل وردية الصالة وجرد النقدية بالدرج */}
+            {showCloseShiftModal && activeShift && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl text-xs space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <Calculator size={18} className="text-rose-400" />
+                                <h3 className="text-base font-bold text-white">إغلاق وردية الصالة ومطابقة الدرج</h3>
+                            </div>
+                            <span className="text-xs text-slate-400 font-mono">{activeShift.shiftNumber}</span>
+                        </div>
+
+                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 font-mono">
+                            <div className="flex justify-between text-slate-400">
+                                <span>مبيعات ألعاب البلايستيشن:</span>
+                                <span className="text-white font-bold">{activeShift.timeSales?.toFixed(2) || '0.00'} ج.م</span>
+                            </div>
+                            <div className="flex justify-between text-slate-400">
+                                <span>مبيعات الطلبات والكافيتريا:</span>
+                                <span className="text-emerald-400 font-bold">{((activeShift.ordersSales || 0) + (activeShift.directCafeSales || 0)).toFixed(2)} ج.م</span>
+                            </div>
+                            <div className="flex justify-between text-slate-300 font-bold pt-2 border-t border-slate-800 text-sm">
+                                <span>الكاش المتوقع في الدرج:</span>
+                                <span className="text-sky-400">{expectedCashNum.toFixed(2)} ج.م</span>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleConfirmCloseShift} className="space-y-3">
+                            <div>
+                                <label className="text-slate-400 block mb-1">المبلغ الفعلي المستلم في الدرج (ج.م):</label>
+                                <input
+                                    type="number"
+                                    required
+                                    step="0.01"
+                                    value={actualCashInput}
+                                    onChange={e => setActualCashInput(e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-rose-500"
+                                />
+                            </div>
+
+                            {actualCashInput !== '' && (
+                                <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between border ${shiftDiff === 0
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                    : shiftDiff > 0
+                                        ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
+                                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                    }`}>
+                                    <span>حالة النقدية:</span>
+                                    <span className="font-mono">
+                                        {shiftDiff === 0 && 'مطابق تماماً (0.00)'}
+                                        {shiftDiff > 0 && `زيادة في الدرج: +${shiftDiff.toFixed(2)} ج.م`}
+                                        {shiftDiff < 0 && `عجز في الدرج: ${shiftDiff.toFixed(2)} ج.م`}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">ملاحظات التقفيل والتسليم:</label>
+                                <textarea
+                                    rows={2}
+                                    value={shiftNotes}
+                                    onChange={e => setShiftNotes(e.target.value)}
+                                    placeholder="أي ملاحظات حول عهدة الدرج أو الشيفت..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
+                                />
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                                <Button
+                                    type="submit"
+                                    disabled={closingShiftLoading}
+                                    className="flex-1 py-3 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-xl"
+                                >
+                                    {closingShiftLoading ? 'جارٍ الإغلاق...' : 'تأكيد وإغلاق الوردية'}
+                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCloseShiftModal(false)}
+                                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition"
+                                >
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* تقرير إغلاق الوردية Z-Report */}
             {shiftReport && (
                 <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
                     <div className="bg-white text-slate-950 rounded-3xl p-6 max-w-sm w-full text-xs space-y-3 font-sans shadow-2xl text-center">
                         <h3 className="font-black text-base text-rose-600">تقرير تقفيل وردية الصالة (Z-Report)</h3>
                         <p className="text-slate-500 font-bold">
-                            الكاشير: {shiftReport.cashierName || shiftReport.shiftDetails?.cashierName || 'كاشير الصالة'}
+                            الكاشير: {shiftReport.shiftDetails?.cashierName || shiftReport.cashierName || 'كاشير الصالة'}
                         </p>
 
                         <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-right space-y-1.5 font-mono">
                             <div className="flex justify-between">
                                 <span>رقم الشيفت:</span>
-                                <b>{shiftReport.shiftNumber || 'LSH-0001'}</b>
+                                <b>{shiftReport.shiftDetails?.shiftNumber || shiftReport.shiftNumber || 'LSH-0001'}</b>
                             </div>
                             <div className="flex justify-between">
                                 <span>ساعات اللعب المفوترة:</span>
-                                <b>{shiftReport.totalHoursBilled || 0} ساعة</b>
+                                <b>{shiftReport.financialSummary?.totalHoursBilled ?? shiftReport.totalHoursBilled ?? 0} ساعة</b>
                             </div>
                             <div className="flex justify-between">
                                 <span>إجمالي مبيعات الألعاب:</span>
-                                <b>{Number(shiftReport.timeSales || 0).toFixed(2)} ج.م</b>
+                                <b>{Number(shiftReport.financialSummary?.timeSales ?? shiftReport.timeSales ?? 0).toFixed(2)} ج.م</b>
                             </div>
                             <div className="flex justify-between">
                                 <span>مبيعات طلبات وكافيتريا:</span>
-                                <b>{Number((shiftReport.ordersSales || 0) + (shiftReport.directCafeSales || 0)).toFixed(2)} ج.م</b>
+                                <b>{Number((shiftReport.financialSummary?.ordersSales ?? shiftReport.ordersSales ?? 0) + (shiftReport.financialSummary?.directCafeSales ?? shiftReport.directCafeSales ?? 0)).toFixed(2)} ج.م</b>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>الكاش المتوقع بالدرج:</span>
+                                <b>{Number(shiftReport.financialSummary?.expectedCash ?? shiftReport.expectedCash ?? 0).toFixed(2)} ج.م</b>
                             </div>
                             <div className="flex justify-between text-rose-600 font-black text-sm pt-1 border-t border-slate-200">
-                                <span>إجمالي كاش الدرج:</span>
-                                <b>{Number(shiftReport.totalSales || shiftReport.expectedCash || 0).toFixed(2)} ج.م</b>
+                                <span>الكاش الفعلي المستلم:</span>
+                                <b>{Number(shiftReport.financialSummary?.actualCash ?? shiftReport.actualCash ?? 0).toFixed(2)} ج.م</b>
+                            </div>
+                            <div className="flex justify-between text-[11px] font-bold">
+                                <span>الفارق (عجز / زيادة):</span>
+                                <b className={shiftReport.financialSummary?.difference < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                                    {Number(shiftReport.financialSummary?.difference ?? shiftReport.difference ?? 0).toFixed(2)} ج.م
+                                </b>
                             </div>
                         </div>
 

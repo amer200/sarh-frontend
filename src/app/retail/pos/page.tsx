@@ -7,7 +7,7 @@ import {
     Barcode, Search, ShoppingBag, Trash2, Plus, Minus,
     CreditCard, Banknote, Smartphone, CheckCircle2,
     AlertCircle, ArrowRight, Store, Printer, Tag, X, User,
-    ShieldAlert
+    ShieldAlert, Clock, PowerOff, Calculator
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import AppSwitcher from '@/components/AppSwitcher';
@@ -18,6 +18,16 @@ export default function RetailPosPage() {
     const [branches, setBranches] = useState<any[]>([]);
     const [selectedBranch, setSelectedBranch] = useState<string>('');
     const [cart, setCart] = useState<any[]>([]);
+
+    // إدارة الوردية المستقلة لكاشير التجزئة
+    const [activeShift, setActiveShift] = useState<any>(null);
+    const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
+    const [openingCashInput, setOpeningCashInput] = useState('100');
+    const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+    const [actualCashInput, setActualCashInput] = useState('');
+    const [shiftNotes, setShiftNotes] = useState('');
+    const [closingShiftLoading, setClosingShiftLoading] = useState(false);
+    const [retailZReport, setRetailZReport] = useState<any>(null);
 
     // فحص حالة الاشتراك والقفل
     const [isBlocked, setIsBlocked] = useState(false);
@@ -42,6 +52,16 @@ export default function RetailPosPage() {
 
     const [loading, setLoading] = useState(true);
 
+    const fetchShiftForBranch = async (branchId: string) => {
+        if (!branchId) return;
+        try {
+            const shiftRes = await api.get(`/retail/shifts/current?branchId=${branchId}`);
+            setActiveShift(shiftRes.data?.data || null);
+        } catch {
+            setActiveShift(null);
+        }
+    };
+
     const fetchData = async () => {
         try {
             setLoading(true);
@@ -54,11 +74,17 @@ export default function RetailPosPage() {
             setProducts(prodRes.data?.data || []);
             const branchList = branchRes.data?.data || [];
             setBranches(branchList);
-            if (branchList.length > 0 && !selectedBranch) {
-                setSelectedBranch(branchList[0]._id);
+
+            let currentBranchId = selectedBranch;
+            if (branchList.length > 0 && !currentBranchId) {
+                currentBranchId = branchList[0]._id;
+                setSelectedBranch(currentBranchId);
             }
 
-            // فحص اشتراك نظام الملابس والتجزئة (retail)
+            if (currentBranchId) {
+                fetchShiftForBranch(currentBranchId);
+            }
+
             if (subRes.data && subRes.data.data) {
                 const retailSub = subRes.data.data.retail || subRes.data.data.subscription || subRes.data.data;
                 if (retailSub) {
@@ -84,10 +110,68 @@ export default function RetailPosPage() {
         fetchData();
     }, []);
 
-    // إضافة صنف عبر مسح الباركود المباشر
+    const handleBranchChange = (branchId: string) => {
+        setSelectedBranch(branchId);
+        setCart([]);
+        fetchShiftForBranch(branchId);
+    };
+
+    // فتح وردية التجزئة
+    const handleOpenShift = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedBranch) {
+            alert('يرجى اختيار الفرع أولاً');
+            return;
+        }
+
+        try {
+            const res = await api.post('/retail/shifts/open', {
+                branchId: selectedBranch,
+                openingCash: Number(openingCashInput) || 0
+            });
+            setActiveShift(res.data?.data);
+            setShowOpenShiftModal(false);
+            setOpeningCashInput('100');
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل فتح وردية التجزئة');
+        }
+    };
+
+    // إغلاق وردية التجزئة
+    const handleCloseShift = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!activeShift) return;
+        setClosingShiftLoading(true);
+
+        try {
+            const res = await api.post('/retail/shifts/close', {
+                shiftId: activeShift._id,
+                actualCash: Number(actualCashInput) || 0,
+                notes: shiftNotes
+            });
+
+            setRetailZReport(res.data?.data);
+            setActiveShift(null);
+            setShowCloseShiftModal(false);
+            setActualCashInput('');
+            setShiftNotes('');
+        } catch (err: any) {
+            alert(err.response?.data?.error || 'فشل إغلاق الوردية');
+        } finally {
+            setClosingShiftLoading(false);
+        }
+    };
+
+    // مسح الباركود
     const handleBarcodeSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!barcodeInput.trim()) return;
+
+        if (!activeShift) {
+            alert('يجب فتح وردية كاشير أولاً قبل إضافة الأصناف!');
+            setBarcodeInput('');
+            return;
+        }
 
         const scannedCode = barcodeInput.trim();
         let found = false;
@@ -108,8 +192,13 @@ export default function RetailPosPage() {
         }
     };
 
-    // إضافة متغير محدد للسلة
+    // إضافة للسلة
     const addToCart = (product: any, variant: any) => {
+        if (!activeShift) {
+            setShowOpenShiftModal(true);
+            return;
+        }
+
         const branchStock = variant.stockByBranch?.find((s: any) => String(s.branchId) === String(selectedBranch))?.quantity || 0;
 
         const existingIndex = cart.findIndex(item => item.variantId === variant._id);
@@ -148,7 +237,6 @@ export default function RetailPosPage() {
         setActiveProductModal(null);
     };
 
-    // تعديل الكمية بالسلة
     const updateQuantity = (variantId: string, delta: number) => {
         setCart(prev => {
             return prev.map(item => {
@@ -169,8 +257,11 @@ export default function RetailPosPage() {
     const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
     const grandTotal = Math.max(0, subtotal - Number(discountAmount || 0));
 
-    // تأكيد ودفع فاتورة التجزئة
     const handleCheckout = async () => {
+        if (!activeShift) {
+            setShowOpenShiftModal(true);
+            return;
+        }
         if (cart.length === 0 || isBlocked) return;
         setIsProcessing(true);
 
@@ -190,7 +281,7 @@ export default function RetailPosPage() {
             setCustomerPhone('');
             fetchData();
         } catch (err: any) {
-            alert((err.response && err.response.data && err.response.data.error) || 'فشل إتمام عملية البيع');
+            alert(err.response?.data?.error || 'فشل إتمام عملية البيع');
         } finally {
             setIsProcessing(false);
         }
@@ -200,6 +291,10 @@ export default function RetailPosPage() {
         p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.brand?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const actualCashNum = Number(actualCashInput) || 0;
+    const expectedCashNum = activeShift ? (activeShift.expectedCash || 0) : 0;
+    const shiftDiff = actualCashNum - expectedCashNum;
 
     return (
         <div className="h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-hidden select-none" dir="rtl">
@@ -218,32 +313,40 @@ export default function RetailPosPage() {
                     </div>
                 </div>
 
-                {/* Branch Selector & Subscription Badge */}
                 <div className="flex items-center gap-2">
-                    {subStatus === 'trial' && (
+                    {/* فحص وفتح وإغلاق الوردية */}
+                    {activeShift ? (
+                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs">
+                            <Clock size={14} className="text-emerald-400" />
+                            <span className="text-slate-400">الوردية:</span>
+                            <span className="font-mono font-bold text-emerald-400">{activeShift.shiftNumber}</span>
+                            <span className="text-white font-bold font-mono mr-1">({activeShift.expectedCash || 0} ج)</span>
+                            <button
+                                onClick={() => {
+                                    setActualCashInput(String(activeShift.expectedCash || 0));
+                                    setShowCloseShiftModal(true);
+                                }}
+                                className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 px-2 py-0.5 rounded-lg text-[10px] font-bold mr-1 flex items-center gap-1 transition"
+                            >
+                                <PowerOff size={12} /> إغلاق
+                            </button>
+                        </div>
+                    ) : (
                         <button
-                            onClick={() => setShowSubModal(true)}
-                            className="bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+                            onClick={() => setShowOpenShiftModal(true)}
+                            className="bg-amber-600 hover:bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-lg"
                         >
-                            <ShieldAlert size={14} /> متبقي {daysLeft} أيام تجريبية
+                            <Clock size={14} /> فتح وردية كاشير
                         </button>
                     )}
 
-                    {subStatus === 'pending_approval' && (
-                        <button
-                            onClick={() => setShowSubModal(true)}
-                            className="bg-blue-500/10 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5"
-                        >
-                            قيد مراجعة الدفع ⏳
-                        </button>
-                    )}
-
+                    {/* محدد الفرع */}
                     <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs">
                         <Store size={14} className="text-amber-400" />
                         <span className="text-slate-400">الفرع:</span>
                         <select
                             value={selectedBranch}
-                            onChange={e => setSelectedBranch(e.target.value)}
+                            onChange={e => handleBranchChange(e.target.value)}
                             className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
                         >
                             {branches.map(b => (
@@ -256,17 +359,15 @@ export default function RetailPosPage() {
                         href="/retail"
                         className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white text-xs font-bold flex items-center gap-1 transition"
                     >
-                        <ArrowRight size={14} /> لوحة إدارة التجزئة
+                        <ArrowRight size={14} /> الإدارة
                     </Link>
                 </div>
             </header>
 
             {/* Main Split Screen */}
             <div className="flex-1 grid grid-cols-12 overflow-hidden">
-
-                {/* Left: Product Grid & Barcode Scanner (7 cols) */}
+                {/* Left: Product Grid & Barcode Scanner */}
                 <div className="col-span-7 p-4 flex flex-col gap-3 border-l border-slate-800 overflow-hidden">
-
                     <div className="grid grid-cols-12 gap-2">
                         <form onSubmit={handleBarcodeSubmit} className="col-span-7 relative">
                             <Barcode className="absolute right-3 top-2.5 text-blue-400" size={18} />
@@ -320,9 +421,8 @@ export default function RetailPosPage() {
                     </div>
                 </div>
 
-                {/* Right: Cart & Checkout (5 cols) */}
+                {/* Right: Cart & Checkout */}
                 <div className="col-span-5 bg-slate-900/60 p-4 flex flex-col justify-between overflow-hidden">
-
                     <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                         <span className="text-xs font-bold text-white flex items-center gap-1.5">
                             <ShoppingBag size={15} className="text-blue-400" /> سلة المشتريات ({cart.reduce((s, i) => s + i.quantity, 0)} قطعة)
@@ -377,8 +477,8 @@ export default function RetailPosPage() {
                                     key={m.id}
                                     onClick={() => setPaymentMethod(m.id as any)}
                                     className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${paymentMethod === m.id
-                                            ? 'bg-blue-600 border-blue-500 text-white shadow-lg'
-                                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg'
+                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                                         }`}
                                 >
                                     <m.icon size={13} /> {m.label}
@@ -417,8 +517,172 @@ export default function RetailPosPage() {
                         </Button>
                     </div>
                 </div>
-
             </div>
+
+            {/* MODAL: فتح الوردية للفرع */}
+            {showOpenShiftModal && (
+                <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+                        <div className="text-center space-y-2">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                                <Clock size={24} />
+                            </div>
+                            <h3 className="text-base font-black text-white">فتح وردية كاشير جديدة</h3>
+                            <p className="text-slate-400 text-[11px]">سجل عهدة الدرج الافتتاحية لبدء عمليات بيع التجزئة</p>
+                        </div>
+
+                        <form onSubmit={handleOpenShift} className="space-y-3">
+                            <div>
+                                <label className="text-slate-300 block mb-1 font-bold">عهدة البداية في الدرج (ج.م):</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="0"
+                                    value={openingCashInput}
+                                    onChange={e => setOpeningCashInput(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-center font-mono text-white text-sm focus:outline-none focus:border-amber-500"
+                                />
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                                <Button type="submit" className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl">
+                                    تأكيد وفتح الوردية
+                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowOpenShiftModal(false)}
+                                    className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-bold"
+                                >
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: إغلاق الوردية وجرد الدرج */}
+            {showCloseShiftModal && activeShift && (
+                <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <Calculator size={18} className="text-rose-400" />
+                                <h3 className="text-sm font-black text-white">إغلاق وردية كاشير التجزئة</h3>
+                            </div>
+                            <span className="font-mono text-slate-400">{activeShift.shiftNumber}</span>
+                        </div>
+
+                        <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2 font-mono">
+                            <div className="flex justify-between text-slate-400">
+                                <span>عهدة البداية:</span>
+                                <b>{activeShift.openingCash?.toFixed(2) || '0.00'} ج.م</b>
+                            </div>
+                            <div className="flex justify-between text-slate-400">
+                                <span>مبيعات الكاش (+):</span>
+                                <b className="text-emerald-400">{activeShift.cashSales?.toFixed(2) || '0.00'} ج.م</b>
+                            </div>
+                            <div className="flex justify-between text-slate-400">
+                                <span>مبيعات الشبكة / الفيزا:</span>
+                                <b className="text-blue-400">{activeShift.cardSales?.toFixed(2) || '0.00'} ج.م</b>
+                            </div>
+                            <div className="flex justify-between text-slate-200 font-bold pt-1.5 border-t border-slate-800">
+                                <span>الكاش المتوقع بالدرج:</span>
+                                <b className="text-sky-400">{expectedCashNum.toFixed(2)} ج.م</b>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleCloseShift} className="space-y-3">
+                            <div>
+                                <label className="text-slate-300 block mb-1 font-bold">المبلغ الفعلي المستلم في الدرج (ج.م):</label>
+                                <input
+                                    type="number"
+                                    required
+                                    step="0.01"
+                                    value={actualCashInput}
+                                    onChange={e => setActualCashInput(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 font-mono text-white focus:outline-none focus:border-rose-500 text-center"
+                                />
+                            </div>
+
+                            {actualCashInput !== '' && (
+                                <div className={`p-2.5 rounded-xl text-[11px] font-bold flex justify-between border ${shiftDiff === 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : shiftDiff > 0 ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                                    <span>حالة الدرج:</span>
+                                    <span className="font-mono">
+                                        {shiftDiff === 0 && 'مطابق تماماً (0.00)'}
+                                        {shiftDiff > 0 && `زيادة: +${shiftDiff.toFixed(2)} ج.م`}
+                                        {shiftDiff < 0 && `عجز: ${shiftDiff.toFixed(2)} ج.م`}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">ملاحظات التقفيل:</label>
+                                <textarea
+                                    rows={2}
+                                    value={shiftNotes}
+                                    onChange={e => setShiftNotes(e.target.value)}
+                                    placeholder="أي ملاحظات حول الجرد..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white focus:outline-none resize-none text-xs"
+                                />
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                                <Button type="submit" disabled={closingShiftLoading} className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl">
+                                    {closingShiftLoading ? 'جارٍ الإغلاق...' : 'تأكيد وإغلاق الوردية'}
+                                </Button>
+                                <button type="button" onClick={() => setShowCloseShiftModal(false)} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-bold">
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: تقرير Z-Report للتجزئة */}
+            {retailZReport && (
+                <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full text-xs space-y-3 shadow-2xl font-sans text-center">
+                        <h3 className="font-black text-base text-rose-600">تقرير إغلاق وردية التجزئة (Z-Report)</h3>
+                        <p className="text-slate-500 font-bold">كود الوردية: {retailZReport.shiftNumber}</p>
+
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-right space-y-1.5 font-mono">
+                            <div className="flex justify-between">
+                                <span>الكاشير:</span>
+                                <b>{retailZReport.cashierName}</b>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>إجمالي المبيعات:</span>
+                                <b>{retailZReport.totalSales?.toFixed(2)} ج.م</b>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>مبيعات نقدية (كاش):</span>
+                                <b>{retailZReport.cashSales?.toFixed(2)} ج.م</b>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>الكاش المستلم:</span>
+                                <b>{retailZReport.actualCash?.toFixed(2)} ج.م</b>
+                            </div>
+                            <div className="flex justify-between pt-1 border-t border-slate-200 font-bold">
+                                <span>الفارق (عجز / زيادة):</span>
+                                <b className={retailZReport.difference < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                                    {retailZReport.difference?.toFixed(2)} ج.م
+                                </b>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <Button onClick={() => { window.print(); setRetailZReport(null); }} className="flex-1 py-2.5 bg-slate-950 text-white font-bold text-xs rounded-xl">
+                                <Printer size={14} className="ml-1" /> طباعة الجرد
+                            </Button>
+                            <button onClick={() => setRetailZReport(null)} className="px-4 py-2.5 bg-slate-200 text-slate-800 rounded-xl font-bold">
+                                إغلاق
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal: Size & Color Picker */}
             {activeProductModal && (
@@ -443,8 +707,8 @@ export default function RetailPosPage() {
                                         disabled={stock < 1}
                                         onClick={() => addToCart(activeProductModal, v)}
                                         className={`p-3 rounded-xl border text-right transition flex flex-col justify-between ${stock > 0
-                                                ? 'bg-slate-950 border-slate-800 hover:border-blue-500 text-white cursor-pointer'
-                                                : 'bg-slate-950/40 border-slate-900 text-slate-600 cursor-not-allowed opacity-50'
+                                            ? 'bg-slate-950 border-slate-800 hover:border-blue-500 text-white cursor-pointer'
+                                            : 'bg-slate-950/40 border-slate-900 text-slate-600 cursor-not-allowed opacity-50'
                                             }`}
                                     >
                                         <div className="flex justify-between items-center">
@@ -522,7 +786,6 @@ export default function RetailPosPage() {
                     }}
                 />
             )}
-
         </div>
     );
 }
