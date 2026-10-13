@@ -1,302 +1,331 @@
+// src/app/register/page.tsx
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import {
-    Building2, Mail, Lock, Phone, Globe,
-    ArrowLeft, CheckCircle2, AlertCircle, Sparkles,
-    Tag, Shirt, UtensilsCrossed, Gift, Users2
+    Gamepad2, UtensilsCrossed, Shirt, Truck,
+    CheckCircle2, AlertCircle, ArrowLeft, Building2,
+    Lock, Mail, Phone, User, Globe, Check, Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
-function RegisterForm() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
+const ACTIVITIES = [
+    {
+        id: 'lounge',
+        title: 'صالة ألعاب وبلايستيشن',
+        desc: 'حساب الوقت الفردي والزوجي، المحاكيات، صافرة التنبيه، وطلبات الكافيه',
+        icon: Gamepad2,
+        color: 'text-violet-400',
+        borderColor: 'border-violet-500/40',
+        bgAccent: 'bg-violet-600/10',
+        badge: 'الأكثر طلباً'
+    },
+    {
+        id: 'pos',
+        title: 'مطاعم، كافيهات وبوفيهات',
+        desc: 'كاشير لمس سريع، فواتير إلكترونية ZATCA، جرد مخزون، وتقفيل شيفتات',
+        icon: UtensilsCrossed,
+        color: 'text-amber-400',
+        borderColor: 'border-amber-500/40',
+        bgAccent: 'bg-amber-500/10'
+    },
+    {
+        id: 'retail',
+        title: 'محلات ملابس وتجزئة',
+        desc: 'مصفوفة المقاسات والألوان، طباعة الباركود الحراري، ومناقلات الفروع',
+        icon: Shirt,
+        color: 'text-blue-400',
+        borderColor: 'border-blue-500/40',
+        bgAccent: 'bg-blue-600/10'
+    },
+    {
+        id: 'fleet',
+        title: 'أسطول شحن وتوصيل',
+        desc: 'إدارة وتتبع المناديب، الشحنات، وتحصيل العهد النقدية عند الاستلام',
+        icon: Truck,
+        color: 'text-emerald-400',
+        borderColor: 'border-emerald-500/40',
+        bgAccent: 'bg-emerald-500/10'
+    }
+];
 
+export default function RegisterPage() {
+    const router = useRouter();
+
+    const [activityType, setActivityType] = useState<'lounge' | 'pos' | 'retail' | 'fleet'>('lounge');
     const [formData, setFormData] = useState({
+        tenantName: '',
+        subdomain: '',
         name: '',
         email: '',
         password: '',
         phone: '',
-        storeName: '',
-        subdomain: '',
-        activityType: 'pos' as 'pos' | 'retail',
-        referralCode: ''
+        country: 'EG'
     });
 
-    const [referralLocked, setReferralLocked] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [errorMsg, setErrorMsg] = useState('');
+    const [subdomainStatus, setSubdomainStatus] = useState<{ checking: boolean; available?: boolean; message?: string }>({
+        checking: false
+    });
 
-    // التقاط كود المسوق تلقائياً من رابط الإحالة (مثل: /register?ref=AMER2026 أو ?marketer=CODE)
-    useEffect(() => {
-        const refCode = searchParams.get('ref') || searchParams.get('marketer') || searchParams.get('code');
-        if (refCode) {
-            setFormData(prev => ({ ...prev, referralCode: refCode.trim().toUpperCase() }));
-            setReferralLocked(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+
+    // فحص توفر النطاق الفرعي لحظياً
+    const handleSubdomainBlur = async () => {
+        const sub = formData.subdomain.trim().toLowerCase();
+        if (sub.length < 3) return;
+
+        setSubdomainStatus({ checking: true });
+        try {
+            const res = await api.get(`/tenants/check-subdomain?subdomain=${sub}`);
+            setSubdomainStatus({
+                checking: false,
+                available: res.data.available,
+                message: res.data.message
+            });
+        } catch {
+            setSubdomainStatus({ checking: false, available: false, message: 'تعذر التحقق من النطاق' });
         }
-    }, [searchParams]);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
-        setErrorMsg('');
+        setErrorMessage('');
 
+        if (subdomainStatus.available === false) {
+            setErrorMessage('يرجى اختيار اسم نطاق متاح للمتابعة');
+            return;
+        }
+
+        setIsSubmitting(true);
         try {
             const payload = {
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                phone: formData.phone,
-                tenantName: formData.storeName,
-                subdomain: formData.subdomain.toLowerCase().trim().replace(/[^a-z0-9-]/g, ''),
-                activityType: formData.activityType,
-                referralCode: formData.referralCode ? formData.referralCode.trim().toUpperCase() : undefined
+                ...formData,
+                subdomain: formData.subdomain.trim().toLowerCase(),
+                activityType
             };
 
             const res = await api.post('/tenants/register', payload);
 
-            if (res.data && res.data.token) {
-                localStorage.setItem('sarh_token', res.data.token);
-                if (res.data.data?.tenant?.subdomain) {
-                    localStorage.setItem('sarh_tenant_subdomain', res.data.data.tenant.subdomain);
+            if (res.data?.data) {
+                // حفظ التوكن وبيانات المنشأة
+                localStorage.setItem('sarh_token', res.data.data.token || '');
+                localStorage.setItem('sarh_tenant_subdomain', res.data.data.subdomain);
+
+                // التوجيه الذكي المباشر حسب النشاط
+                if (activityType === 'lounge') {
+                    router.push('/lounge');
+                } else if (activityType === 'retail') {
+                    router.push('/retail/pos');
+                } else if (activityType === 'pos') {
+                    router.push('/pos');
+                } else {
+                    router.push('/dashboard');
                 }
-                if (res.data.data?.user) {
-                    localStorage.setItem('sarh_user', JSON.stringify(res.data.data.user));
-                }
-                router.push('/dashboard');
-            } else {
-                router.push('/login');
             }
         } catch (err: any) {
-            setErrorMsg((err.response && err.response.data && err.response.data.error) || 'فشل في إنشاء الحساب، يرجى مراجعة البيانات');
+            setErrorMessage(err.response?.data?.error || 'فشل في إتمام التسجيل، يرجى مراجعة البيانات');
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="max-w-xl w-full space-y-6">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans selection:bg-blue-600 selection:text-white" dir="rtl">
+            <div className="max-w-2xl w-full mx-auto space-y-8">
 
-            {/* Brand Header */}
-            <div className="text-center space-y-2">
-                <Link href="/" className="inline-flex items-center gap-2.5">
-                    <div className="w-11 h-11 rounded-2xl bg-blue-600 border border-blue-500 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-blue-600/30">
-                        ص
+                {/* Header */}
+                <div className="text-center space-y-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
+                        <Sparkles size={14} /> تجربة مجانية كاملة لمدة 7 أيام بدون بطاقة بنكية
                     </div>
-                    <span className="text-xl font-black tracking-wide text-white">صَرْح</span>
-                </Link>
-                <h1 className="text-lg font-black text-white">ابدأ تجربة مجانية لمدة 7 أيام</h1>
-                <p className="text-xs text-slate-400">أنشئ حساب منشأتك وفعّل نظامك المفضل فوراً وبدون بطاقة ائتمان</p>
-            </div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-white">ابدأ تشغيل منشأتك على منصة صَرْح</h1>
+                    <p className="text-xs sm:text-sm text-slate-400">اختر نوع نظامك الأساسي واستلم مساحة عملك السحابية المستقلة فوراً</p>
+                </div>
 
-            {/* Form Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 text-xs">
-
-                {/* شارة كود المسوق / الخصم إن وجد */}
-                {formData.referralCode && (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Gift size={16} />
-                            <span>تم تفعيل رابط دعوة المسوق: <b className="font-mono">{formData.referralCode}</b></span>
-                        </div>
-                        <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-md font-bold">شريك معتمد</span>
+                {errorMessage && (
+                    <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-2xl flex items-center gap-2">
+                        <AlertCircle size={16} /> <span>{errorMessage}</span>
                     </div>
                 )}
 
-                {errorMsg && (
-                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center gap-2">
-                        <AlertCircle size={16} className="shrink-0" />
-                        <span>{errorMsg}</span>
-                    </div>
-                )}
+                <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-
-                    {/* 1. اختيار النظام الأساسي لبدء التجربة المجانية */}
-                    <div>
-                        <label className="text-slate-300 block mb-1.5 font-bold">1. اختر النظام المراد بدء تجربة الـ 7 أيام له:</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setFormData({ ...formData, activityType: 'pos' })}
-                                className={`p-3.5 rounded-2xl border text-right transition flex items-center gap-2.5 ${formData.activityType === 'pos'
-                                        ? 'bg-amber-500/10 border-amber-500 text-white font-bold shadow-lg'
-                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                                    }`}
-                            >
-                                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                                    <UtensilsCrossed size={16} />
-                                </div>
-                                <div>
-                                    <span className="block text-xs text-white">صَرْح POS للمطاعم</span>
-                                    <span className="text-[10px] text-slate-400">كاشير، طاولات، وشيفتات</span>
-                                </div>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setFormData({ ...formData, activityType: 'retail' })}
-                                className={`p-3.5 rounded-2xl border text-right transition flex items-center gap-2.5 ${formData.activityType === 'retail'
-                                        ? 'bg-blue-600/10 border-blue-500 text-white font-bold shadow-lg'
-                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                                    }`}
-                            >
-                                <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                                    <Shirt size={16} />
-                                </div>
-                                <div>
-                                    <span className="block text-xs text-white">صَرْح Retail للملابس</span>
-                                    <span className="text-[10px] text-slate-400">مقاسات، باركود، وفروع</span>
-                                </div>
-                            </button>
+                    {/* Step 1: اختيار النشاط */}
+                    <div className="space-y-3">
+                        <label className="text-xs font-bold text-slate-300 block">
+                            1. حدد مجال عمل المنشأة (يمكنك إضافة بقية الأنظمة لاحقاً بشكل مستقل):
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {ACTIVITIES.map(act => {
+                                const isSelected = activityType === act.id;
+                                return (
+                                    <div
+                                        key={act.id}
+                                        onClick={() => setActivityType(act.id as any)}
+                                        className={`p-4 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${isSelected
+                                                ? `${act.bgAccent}${act.borderColor} border-2 shadow-lg`
+                                                : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                                            }`}
+                                    >
+                                        {act.badge && (
+                                            <span className="absolute top-2 left-2 bg-violet-500/20 text-violet-400 border border-violet-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                                                {act.badge}
+                                            </span>
+                                        )}
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <act.icon size={18} className={act.color} />
+                                                <h3 className="text-xs font-bold text-white">{act.title}</h3>
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 leading-relaxed">{act.desc}</p>
+                                        </div>
+                                        <div className="mt-3 flex justify-end">
+                                            <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'bg-blue-600 border-blue-500 text-white' : 'border-slate-700'
+                                                }`}>
+                                                {isSelected && <Check size={10} />}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1.5">
-                            * ستتمكن من تجربة أو تفعيل الأنظمة الأخرى وقتما تشاء بشكل مستقل من داخل حسابك.
-                        </p>
                     </div>
 
-                    {/* 2. بيانات المتجر والنطاق */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                                <Building2 size={14} className="text-blue-400" /> اسم المتجر / البراند:
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                placeholder="مثال: كافيه العمدة أو زارا ستور"
-                                value={formData.storeName}
-                                onChange={e => setFormData({ ...formData, storeName: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500 transition"
-                            />
+                    {/* Step 2: بيانات المنشأة والنطاق */}
+                    <div className="space-y-4 pt-4 border-t border-slate-800">
+                        <label className="text-xs font-bold text-slate-300 block">
+                            2. بيانات المنشأة ومساحة العمل السحابية:
+                        </label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <label className="text-slate-400 block mb-1">الاسم التجاري للمحل أو الصالة:</label>
+                                <div className="relative">
+                                    <Building2 className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="مثال: بلايستيشن أرينا أو برجر فاكتوري"
+                                        value={formData.tenantName}
+                                        onChange={e => setFormData({ ...formData, tenantName: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">اسم النطاق السحابي (Subdomain):</label>
+                                <div className="relative">
+                                    <Globe className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="text"
+                                        required
+                                        dir="ltr"
+                                        placeholder="arena-lounge"
+                                        value={formData.subdomain}
+                                        onBlur={handleSubdomainBlur}
+                                        onChange={e => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-28 py-2 text-white font-mono text-left focus:outline-none focus:border-blue-500"
+                                    />
+                                    <span className="absolute left-3 top-2.5 text-slate-500 text-[11px] font-mono select-none">
+                                        .sarh.cloud
+                                    </span>
+                                </div>
+                                {subdomainStatus.message && (
+                                    <span className={`text-[10px] mt-1 block font-mono ${subdomainStatus.available ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {subdomainStatus.message}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                                <Globe size={14} className="text-amber-400" /> رابط النطاق (Subdomain):
-                            </label>
-                            <div className="relative flex items-center">
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="mybrand"
-                                    value={formData.subdomain}
-                                    onChange={e => setFormData({ ...formData, subdomain: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-3.5 pl-24 py-2.5 text-white font-mono text-left focus:outline-none focus:border-blue-500 transition dir-ltr"
-                                />
-                                <span className="absolute left-3 text-[11px] text-slate-500 font-mono select-none">.sarh.cloud</span>
+                        {/* Step 3: بيانات المسؤول وكلمة المرور */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
+                            <div>
+                                <label className="text-slate-400 block mb-1">اسمك الشخصي (المسؤول):</label>
+                                <div className="relative">
+                                    <User className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="أحمد محمد"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">رقم الهاتف أو الواتساب:</label>
+                                <div className="relative">
+                                    <Phone className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="tel"
+                                        required
+                                        dir="ltr"
+                                        placeholder="01012345678"
+                                        value={formData.phone}
+                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500 text-right"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">البريد الإلكتروني للتحكم:</label>
+                                <div className="relative">
+                                    <Mail className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="email"
+                                        required
+                                        dir="ltr"
+                                        placeholder="manager@domain.com"
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500 text-left"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 block mb-1">كلمة المرور:</label>
+                                <div className="relative">
+                                    <Lock className="absolute right-3 top-2.5 text-slate-500" size={16} />
+                                    <input
+                                        type="password"
+                                        required
+                                        placeholder="••••••••"
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-9 pl-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* 3. بيانات المسؤول والاتصال */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold">اسم صاحب الحساب / المسؤول:</label>
-                            <input
-                                type="text"
-                                required
-                                placeholder="الاسم ثلاثي"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500 transition"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                                <Phone size={14} className="text-emerald-400" /> رقم الهاتف:
-                            </label>
-                            <input
-                                type="tel"
-                                required
-                                placeholder="010xxxxxxxx"
-                                value={formData.phone}
-                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-mono focus:outline-none focus:border-blue-500 transition"
-                            />
-                        </div>
-                    </div>
-
-                    {/* 4. الحساب وكلمة المرور */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                                <Mail size={14} className="text-sky-400" /> البريد الإلكتروني:
-                            </label>
-                            <input
-                                type="email"
-                                required
-                                placeholder="name@company.com"
-                                value={formData.email}
-                                onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500 transition"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                                <Lock size={14} className="text-rose-400" /> كلمة المرور:
-                            </label>
-                            <input
-                                type="password"
-                                required
-                                placeholder="••••••••"
-                                value={formData.password}
-                                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500 transition"
-                            />
-                        </div>
-                    </div>
-
-                    {/* 5. كود المسوق / الشريك التسويقي */}
-                    <div>
-                        <label className="text-slate-400 block mb-1 font-semibold flex items-center gap-1.5">
-                            <Users2 size={14} className="text-purple-400" /> كود المسوق أو الشريك المعتمد (اختياري):
-                        </label>
-                        <input
-                            type="text"
-                            readOnly={referralLocked}
-                            placeholder="مثال: MARKETER10"
-                            value={formData.referralCode}
-                            onChange={e => setFormData({ ...formData, referralCode: e.target.value.toUpperCase() })}
-                            className={`w-full bg-slate-950 border rounded-xl px-3.5 py-2 text-white font-mono uppercase focus:outline-none transition ${referralLocked
-                                    ? 'border-emerald-500/50 bg-emerald-950/20 text-emerald-300 cursor-not-allowed'
-                                    : 'border-slate-800 focus:border-purple-500'
-                                }`}
-                        />
-                    </div>
-
                     <Button
                         type="submit"
-                        disabled={loading}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-xl shadow-xl transition active:scale-98 mt-2"
+                        disabled={isSubmitting}
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-xl shadow-xl transition-all active:scale-98"
                     >
-                        {loading ? 'جارٍ إنشاء المنشأة وتفعيل التجربة...' : 'إنشاء الحساب وبدء التجربة المجانية 🚀'}
+                        {isSubmitting ? 'جارٍ تهيئة المنظومة وقاعدة البيانات...' : 'إنشاء الحساب وبدء التجربة المجانية 🚀'}
                     </Button>
+
+                    <p className="text-center text-xs text-slate-400">
+                        لديك حساب بالفعل؟{' '}
+                        <Link href="/login" className="text-blue-400 hover:underline font-bold">
+                            تسجيل الدخول
+                        </Link>
+                    </p>
                 </form>
 
-                <div className="text-center pt-3 border-t border-slate-800 text-slate-400">
-                    لديك حساب مسجل بالفعل؟{' '}
-                    <Link href="/login" className="text-blue-400 font-bold hover:underline">
-                        تسجيل الدخول
-                    </Link>
-                </div>
             </div>
-
-        </div>
-    );
-}
-
-export default function RegisterPage() {
-    return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans selection:bg-blue-600 selection:text-white" dir="rtl">
-            <Suspense fallback={<div className="text-xs text-slate-500">جارٍ تحميل نموذج التسجيل...</div>}>
-                <RegisterForm />
-            </Suspense>
         </div>
     );
 }
