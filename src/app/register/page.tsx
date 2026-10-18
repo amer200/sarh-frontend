@@ -1,4 +1,3 @@
-// src/app/register/page.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -7,8 +6,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import {
     Gamepad2, UtensilsCrossed, Shirt, Truck,
-    CheckCircle2, AlertCircle, ArrowLeft, Building2,
-    Lock, Mail, Phone, User, Globe, Check, Sparkles
+    AlertCircle, Building2, Lock, Mail, Phone, User, Globe, Check, Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -73,7 +71,6 @@ export default function RegisterPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
-    // فحص توفر النطاق الفرعي لحظياً
     const handleSubdomainBlur = async () => {
         const sub = formData.subdomain.trim().toLowerCase();
         if (sub.length < 3) return;
@@ -111,11 +108,9 @@ export default function RegisterPage() {
             const res = await api.post('/tenants/register', payload);
 
             if (res.data?.data) {
-                // حفظ التوكن وبيانات المنشأة
                 localStorage.setItem('sarh_token', res.data.data.token || '');
                 localStorage.setItem('sarh_tenant_subdomain', res.data.data.subdomain);
 
-                // التوجيه الذكي المباشر حسب النشاط
                 if (activityType === 'lounge') {
                     router.push('/lounge');
                 } else if (activityType === 'retail') {
@@ -136,8 +131,6 @@ export default function RegisterPage() {
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans selection:bg-blue-600 selection:text-white" dir="rtl">
             <div className="max-w-2xl w-full mx-auto space-y-8">
-
-                {/* Header */}
                 <div className="text-center space-y-2">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
                         <Sparkles size={14} /> تجربة مجانية كاملة لمدة 7 أيام بدون بطاقة بنكية
@@ -153,8 +146,6 @@ export default function RegisterPage() {
                 )}
 
                 <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
-
-                    {/* Step 1: اختيار النشاط */}
                     <div className="space-y-3">
                         <label className="text-xs font-bold text-slate-300 block">
                             1. حدد مجال عمل المنشأة (يمكنك إضافة بقية الأنظمة لاحقاً بشكل مستقل):
@@ -167,7 +158,7 @@ export default function RegisterPage() {
                                         key={act.id}
                                         onClick={() => setActivityType(act.id as any)}
                                         className={`p-4 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${isSelected
-                                                ? `${act.bgAccent}${act.borderColor} border-2 shadow-lg`
+                                                ? `${act.bgAccent} ${act.borderColor} border-2 shadow-lg`
                                                 : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
                                             }`}
                                     >
@@ -195,7 +186,6 @@ export default function RegisterPage() {
                         </div>
                     </div>
 
-                    {/* Step 2: بيانات المنشأة والنطاق */}
                     <div className="space-y-4 pt-4 border-t border-slate-800">
                         <label className="text-xs font-bold text-slate-300 block">
                             2. بيانات المنشأة ومساحة العمل السحابية:
@@ -243,7 +233,6 @@ export default function RegisterPage() {
                             </div>
                         </div>
 
-                        {/* Step 3: بيانات المسؤول وكلمة المرور */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
                             <div>
                                 <label className="text-slate-400 block mb-1">اسمك الشخصي (المسؤول):</label>
@@ -324,7 +313,6 @@ export default function RegisterPage() {
                         </Link>
                     </p>
                 </form>
-
             </div>
         </div>
     );
