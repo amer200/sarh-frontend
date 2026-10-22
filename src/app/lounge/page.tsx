@@ -420,22 +420,30 @@ export default function LoungePosPage() {
     const handleVoidRoom = async (voidType: 'time' | 'all') => {
         if (!activeManageRoom) return;
         const confirmMsg = voidType === 'time'
-            ? 'تأكيد تصفير وقت الجلسة فقط؟ (الطلبات ستظل محسوبة وسيرفع إذن للإدارة)'
+            ? 'تأكيد تصفير وقت الجلسة وإنهاء اللعب ومحاسبة الطلبات إن وُجدت؟'
             : 'تأكيد إلغاء الغرفة بالكامل ومسح الوقت والطلبات؟';
 
         if (!confirm(confirmMsg)) return;
 
         stopBuzzer(activeManageRoom._id);
         try {
-            await api.post('/lounge/refunds/request', {
+            const res = await api.post('/lounge/refunds/request', {
                 roomId: activeManageRoom._id,
                 voidType
             });
-            alert('تمت العملية وإرسال طلب المرتجع إلى لوحة المدير للاعتماد.');
+
+            // 1. إغلاق نافذة إدارة الغرفة
             setActiveManageRoom(null);
+
+            // 2. إظهار الفاتورة الحرارية فوراً للطباعة والتحصيل
+            if (res.data?.bill) {
+                setCurrentBill(res.data.bill);
+            }
+
+            // 3. تحديث قائمة الغرف لتصبح خضراء ومتاحة
             fetchLoungeData();
         } catch (err: any) {
-            alert(err.response?.data?.error || 'فشل رفع طلب الإلغاء');
+            alert(err.response?.data?.error || 'فشل تنفيذ العملية');
         }
     };
 
