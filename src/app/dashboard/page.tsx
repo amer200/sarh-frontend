@@ -1,3 +1,4 @@
+// src/app/lounge/page.tsx
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,7 +10,7 @@ import {
     X, Check, Plus, Minus, VolumeX, ShieldAlert,
     RefreshCw, Trash2, ShieldCheck, KeyRound,
     RotateCcw, DollarSign, History, Layers, Edit3,
-    HelpCircle, Lock, Unlock, Calculator, Eye, EyeOff
+    HelpCircle, Lock, Unlock, Calculator
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import AppSwitcher from '@/components/AppSwitcher';
@@ -57,9 +58,6 @@ export default function LoungePosPage() {
     const [cashierNameInput, setCashierNameInput] = useState('');
     const [currentTime, setCurrentTime] = useState(Date.now());
 
-    // وضع المراقبة الحية للمدير من المنزل / الهاتف
-    const [isMonitorMode, setIsMonitorMode] = useState(false);
-
     // حالة الاشتراك
     const [isBlocked, setIsBlocked] = useState(false);
     const [subStatus, setSubStatus] = useState('trial');
@@ -69,6 +67,10 @@ export default function LoungePosPage() {
     // تشغيل جهاز
     const [startModalRoom, setStartModalRoom] = useState<Room | null>(null);
     const [simTargetMins, setSimTargetMins] = useState(30);
+    const [isStartingRoom, setIsStartingRoom] = useState(false);
+    // قفل شاشة كامل لمنع أي نقرات متكررة أثناء انتظار استجابة السيرفر
+    const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('جارٍ معالجة الطلب وتحديث السيرفر...');
 
     // إدارة الجلسة النشطة
     const [activeManageRoom, setActiveManageRoom] = useState<Room | null>(null);
@@ -95,14 +97,18 @@ export default function LoungePosPage() {
     const [shiftNotes, setShiftNotes] = useState('');
     const [closingShiftLoading, setClosingShiftLoading] = useState(false);
 
-    // لوحة المدير والرقم السري من قاعدة البيانات
+    // لوحة المدير
     const [showAdminPinModal, setShowAdminPinModal] = useState(false);
     const [adminPinInput, setAdminPinInput] = useState('');
-    const [adminPinLoading, setAdminPinLoading] = useState(false);
+    const [adminPin, setAdminPin] = useState('1234');
     const [showAdminModal, setShowAdminModal] = useState(false);
     const [adminActiveTab, setAdminActiveTab] = useState<'rooms' | 'products' | 'refunds' | 'shifts' | 'pin'>('rooms');
     const [newAdminPin, setNewAdminPin] = useState('');
     const [shiftsHistory, setShiftsHistory] = useState<any[]>([]);
+
+    // استعادة الرقم السري
+    const [showForgotPinModal, setShowForgotPinModal] = useState(false);
+    const [newRecoveredPin, setNewRecoveredPin] = useState('');
 
     // نموذج إضافة وتعديل الغرف
     const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
@@ -130,15 +136,10 @@ export default function LoungePosPage() {
 
     const [pendingRefunds, setPendingRefunds] = useState<any[]>([]);
 
-    // محرك الصوت وتنبيه الوقت
+    // محرك الصوت
     const audioCtxRef = useRef<AudioContext | null>(null);
     const alarmsIntervalRef = useRef<{ [roomId: string]: NodeJS.Timeout }>({});
     const [mutedRooms, setMutedRooms] = useState<{ [roomId: string]: boolean }>({});
-
-    // دالة توحيد الأرقام (تحويل الأرقام العربية المشرقية إلى إنجليزية)
-    const toEnglishDigits = (str: string) => {
-        return str.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).trim();
-    };
 
     const initAudio = () => {
         if (!audioCtxRef.current) {
@@ -176,7 +177,7 @@ export default function LoungePosPage() {
         setMutedRooms(prev => ({ ...prev, [roomId]: true }));
     };
 
-    // جلب البيانات الأساسية للصالة
+    // جلب البيانات وتوحيد المعرفات
     const fetchLoungeData = async () => {
         try {
             const [roomsRes, shiftRes, menuRes, refundsRes, subRes] = await Promise.all([
@@ -227,6 +228,9 @@ export default function LoungePosPage() {
             return;
         }
 
+        const savedPin = localStorage.getItem('sarh_lounge_pin');
+        if (savedPin) setAdminPin(savedPin);
+
         fetchLoungeData();
 
         const timer = setInterval(() => {
@@ -239,7 +243,7 @@ export default function LoungePosPage() {
         };
     }, []);
 
-    // فتح وردية جديدة
+    // فتح الوردية
     const handleStartShift = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!cashierNameInput.trim()) return;
@@ -250,7 +254,6 @@ export default function LoungePosPage() {
             });
             if (res.data?.data) {
                 setActiveShift(res.data.data);
-                setIsMonitorMode(false);
                 setCashierNameInput('');
                 fetchLoungeData();
             }
@@ -258,7 +261,6 @@ export default function LoungePosPage() {
             const existing = err.response?.data?.data || err.response?.data?.shift;
             if (existing) {
                 setActiveShift(existing);
-                setIsMonitorMode(false);
                 setCashierNameInput('');
                 fetchLoungeData();
                 return;
@@ -267,7 +269,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // تقفيل الوردية وجرد النقدية
+    // تأكيد إغلاق الوردية وجرد النقدية
     const handleConfirmCloseShift = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!activeShift) return;
@@ -293,7 +295,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // إغلاق الوردية العالقة فورياً
+    // فك الشيفت العالق
     const handleForceCloseStuckShift = async () => {
         if (!confirm('هل تريد إغلاق أي وردية صالة معلقة حالياً في السيرفر؟')) return;
         try {
@@ -308,7 +310,10 @@ export default function LoungePosPage() {
 
     // تشغيل جهاز
     const executeStartRoom = async (consoleType: 'PS4' | 'PS5' | 'SIM', playMode: 'single' | 'multi', targetMinutes = 0) => {
-        if (!startModalRoom) return;
+        if (!startModalRoom || isStartingRoom || isGlobalLoading) return;
+        setIsStartingRoom(true);
+        setIsGlobalLoading(true);
+        setLoadingMessage(`جارٍ بدء تشغيل ${startModalRoom.name}... يرجى الانتظار`);
         try {
             await api.post('/lounge/toggle-room', {
                 roomId: startModalRoom._id,
@@ -317,40 +322,53 @@ export default function LoungePosPage() {
                 targetMinutes
             });
             setStartModalRoom(null);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل تشغيل الغرفة');
+        } finally {
+            setIsStartingRoom(false);
+            setIsGlobalLoading(false);
         }
     };
 
-    // إيقاف اللعب وإصدار الفاتورة
+    // إنهاء الجلسة وإصدار الفاتورة
     const handleStopRoom = async (roomId: string) => {
+        if (isGlobalLoading) return;
         if (!confirm('تأكيد إيقاف اللعب وإصدار الفاتورة؟')) return;
         stopBuzzer(roomId);
 
+        setIsGlobalLoading(true);
+        setLoadingMessage('جارٍ إيقاف اللعب واحتساب الفاتورة وترحيل الوردية...');
         try {
             const res = await api.post('/lounge/toggle-room', { roomId });
             setActiveManageRoom(null);
             setCurrentBill(res.data.bill);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل محاسبة الغرفة');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
     // تحويل نمط اللعب الحي
     const handleSwitchMode = async (roomId: string, newMode: 'single' | 'multi') => {
+        if (isGlobalLoading) return;
         if (!confirm(`تأكيد التحويل إلى وضع ${newMode === 'multi' ? 'Multi 👥' : 'فردي 👤'} واحتساب الوقت السابق؟`)) return;
+        setIsGlobalLoading(true);
+        setLoadingMessage('جارٍ تحويل نمط اللعب واحتساب فترات الوقت...');
         try {
             await api.post('/lounge/switch-mode', { roomId, newMode });
             setActiveManageRoom(null);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل تحويل نمط اللعب');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
-    // إضافة طلب للغرفة النشطة
+    // إضافة طلب للغرفة
     const handleAddProductToRoom = async (product: ProductItem) => {
         if (!activeManageRoom) return;
 
@@ -406,7 +424,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // حذف صنف من الغرفة واسترجاع رصيد المخزن
+    // حذف صنف من الغرفة النشطة مع إرجاع المخزن بالسيرفر
     const handleRemoveCharge = async (chargeId: string) => {
         if (!activeManageRoom) return;
         try {
@@ -418,72 +436,90 @@ export default function LoungePosPage() {
         }
     };
 
-    // طلب الإلغاء أو تصفير الوقت
+    // طلب الإلغاء أو التصفير
     const handleVoidRoom = async (voidType: 'time' | 'all') => {
-        if (!activeManageRoom) return;
+        if (!activeManageRoom || isGlobalLoading) return;
         const confirmMsg = voidType === 'time'
-            ? 'تأكيد تصفير وقت الجلسة فقط؟ (الطلبات ستظل محسوبة وسيرفع إذن للإدارة)'
+            ? 'تأكيد تصفير وقت الجلسة وإنهاء اللعب ومحاسبة الطلبات إن وُجدت؟'
             : 'تأكيد إلغاء الغرفة بالكامل ومسح الوقت والطلبات؟';
 
         if (!confirm(confirmMsg)) return;
 
         stopBuzzer(activeManageRoom._id);
+
+        const roomName = activeManageRoom.name;
+        const currentCharges = [...roomCharges];
+        const ordersTotal = currentCharges.reduce(
+            (sum, item) => sum + (Number(item.price) * (Number(item.qty) || 1)),
+            0
+        );
+
+        setIsGlobalLoading(true);
+        setLoadingMessage(voidType === 'time' ? 'جارٍ تصفير وقت الجلسة وإنهاء اللعب ومحاسبة الطلبات...' : 'جارٍ إلغاء الغرفة واسترجاع المخزون...');
         try {
-            await api.post('/lounge/refunds/request', {
+            const res = await api.post('/lounge/refunds/request', {
                 roomId: activeManageRoom._id,
                 voidType
             });
-            alert('تمت العملية وإرسال طلب المرتجع إلى لوحة المدير للاعتماد.');
+
+            // 1. إغلاق نافذة إدارة الغرفة
             setActiveManageRoom(null);
-            fetchLoungeData();
+
+            // 2. إظهار الفاتورة الحرارية فوراً للطباعة والتحصيل
+            if (voidType === 'time') {
+                const finalBill = res.data?.bill || {
+                    roomName: roomName,
+                    actualMinutes: 0,
+                    billedMinutes: 0,
+                    timeCost: 0,
+                    ordersCost: ordersTotal,
+                    total: ordersTotal,
+                    intervalsDetails: [{ mode: 'وقت مصفر (إعفاء إداري)', billedMins: 0, cost: 0 }],
+                    chargesDetails: currentCharges
+                };
+
+                if (finalBill.total > 0 || finalBill.chargesDetails?.length > 0) {
+                    setCurrentBill(finalBill);
+                }
+            }
+
+            // 3. تحديث قائمة الغرف لتصبح خضراء ومتاحة
+            await fetchLoungeData();
         } catch (err: any) {
-            alert(err.response?.data?.error || 'فشل رفع طلب الإلغاء');
+            alert(err.response?.data?.error || 'فشل تنفيذ العملية');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
-    // التحقق من الرقم السري عبر قاعدة البيانات
-    const handleVerifyAdminPin = async () => {
-        const cleanPin = toEnglishDigits(adminPinInput);
-        if (!cleanPin) return;
-
-        setAdminPinLoading(true);
-        try {
-            // فحص الـ PIN في السيرفر بقاعدة البيانات
-            await api.post('/lounge/verify-pin', { pin: cleanPin });
+    // لوحة المدير
+    const handleVerifyAdminPin = () => {
+        if (adminPinInput.trim() === adminPin) {
             setShowAdminPinModal(false);
             setAdminPinInput('');
             setShowAdminModal(true);
             fetchShiftsHistory();
-        } catch (err: any) {
-            // دعم احتياطي فوري إذا كان الرمز الافتراضي 1234
-            if (cleanPin === '1234') {
-                setShowAdminPinModal(false);
-                setAdminPinInput('');
-                setShowAdminModal(true);
-                fetchShiftsHistory();
-            } else {
-                alert(err.response?.data?.error || 'الرقم السري غير صحيح! (الافتراضي: 1234)');
-            }
-        } finally {
-            setAdminPinLoading(false);
+        } else {
+            alert('الرقم السري غير صحيح! (الافتراضي: 1234)');
         }
     };
 
-    // تغيير الرقم السري في قاعدة البيانات
-    const handleChangePin = async () => {
-        const cleanNewPin = toEnglishDigits(newAdminPin);
-        if (!cleanNewPin || cleanNewPin.length < 4) {
-            alert('يجب أن يتكون الرقم السري من 4 أرقام على الأقل');
-            return;
-        }
+    const handleRecoverPin = () => {
+        const pinToSet = newRecoveredPin.trim() || '1234';
+        setAdminPin(pinToSet);
+        localStorage.setItem('sarh_lounge_pin', pinToSet);
+        setShowForgotPinModal(false);
+        setNewRecoveredPin('');
+        alert(`تم تعيين الرقم السري الجديد بنجاح: (${pinToSet})`);
+        setShowAdminPinModal(true);
+    };
 
-        try {
-            await api.patch('/lounge/update-pin', { newPin: cleanNewPin });
-            setNewAdminPin('');
-            alert('تم حفظ وتحديث الرقم السري في قاعدة البيانات بنجاح!');
-        } catch (err: any) {
-            alert(err.response?.data?.error || 'فشل تحديث الرقم السري في السيرفر');
-        }
+    const handleChangePin = () => {
+        if (!newAdminPin.trim()) return;
+        setAdminPin(newAdminPin.trim());
+        localStorage.setItem('sarh_lounge_pin', newAdminPin.trim());
+        setNewAdminPin('');
+        alert('تم حفظ وتحديث الرقم السري بنجاح!');
     };
 
     // حفظ الغرفة في قاعدة البيانات
@@ -536,7 +572,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // حفظ صنف المنيو
+    // حفظ صنف المنيو بالسيرفر
     const handleSaveProduct = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!prodForm.name.trim() || Number(prodForm.price) <= 0) return;
@@ -570,7 +606,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // اعتماد أو رفض المرتجع
+    // اعتماد أو رفض طلب المرتجع
     const handleProcessRefund = async (refundId: string, action: 'approve' | 'reject') => {
         try {
             await api.post('/lounge/refunds/process', { refundId, action });
@@ -582,7 +618,7 @@ export default function LoungePosPage() {
         }
     };
 
-    // الكافيتريا السريعة
+    // الكافيتريا والترحيل
     const addToCafeCart = (prod: ProductItem) => {
         if (prod.isCountable && prod.stock <= 0) {
             alert(`نفذت كمية [${prod.name}] من المخزن!`);
@@ -662,8 +698,8 @@ export default function LoungePosPage() {
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none" dir="rtl">
 
-            {/* شاشة بدء الوردية الإلزامية (مع خيار المراقبة للمدير من الهاتف) */}
-            {!activeShift && !isMonitorMode && !loading && (
+            {/* شاشة بدء الوردية الإلزامية */}
+            {!activeShift && !loading && (
                 <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-2xl">
                         <div className="w-14 h-14 rounded-2xl bg-violet-600/10 border border-violet-500/30 text-violet-400 flex items-center justify-center mx-auto shadow-inner">
@@ -687,19 +723,7 @@ export default function LoungePosPage() {
                             </Button>
                         </form>
 
-                        {/* خيار الدخول في وضع المعاينة والمراقبة للمدير من البيت */}
-                        <div className="pt-2 border-t border-slate-800 space-y-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsMonitorMode(true)}
-                                className="w-full py-2.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 text-amber-400 hover:text-amber-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                            >
-                                <Eye size={14} /> الدخول كمدير للمراقبة والمعاينة (عرض فقط)
-                            </button>
-                            <p className="text-[10px] text-slate-500">يتيح لصاحب الصالة فحص الجلسات والأسعار والتقارير دون فتح درج نقدية</p>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5 text-xs">
+                        <div className="pt-2 border-t border-slate-800 flex flex-col gap-2 text-xs">
                             <button
                                 type="button"
                                 onClick={async () => {
@@ -740,19 +764,6 @@ export default function LoungePosPage() {
                 </div>
 
                 <div className="flex items-center gap-2.5 text-xs">
-                    {/* شارة وضع المراقبة للمدير */}
-                    {isMonitorMode && !activeShift && (
-                        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2">
-                            <span>👁️ وضع المراقبة الحية (عرض فقط)</span>
-                            <button
-                                onClick={() => setIsMonitorMode(false)}
-                                className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 px-2 py-0.5 rounded text-amber-300 font-bold"
-                            >
-                                فتح وردية
-                            </button>
-                        </div>
-                    )}
-
                     <button
                         onClick={() => setShowCafeModal(true)}
                         className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition"
@@ -785,17 +796,17 @@ export default function LoungePosPage() {
                         </button>
                     )}
 
-                    {activeShift && (
-                        <button
-                            onClick={() => {
+                    <button
+                        onClick={() => {
+                            if (activeShift) {
                                 setActualCashInput(String(activeShift.expectedCash || 0));
                                 setShowCloseShiftModal(true);
-                            }}
-                            className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition"
-                        >
-                            <PowerOff size={14} /> تقفيل الوردية
-                        </button>
-                    )}
+                            }
+                        }}
+                        className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition"
+                    >
+                        <PowerOff size={14} /> تقفيل الوردية
+                    </button>
                 </div>
             </header>
 
@@ -850,10 +861,6 @@ export default function LoungePosPage() {
                                         if (isBusy) {
                                             openManageModal(room);
                                         } else {
-                                            if (isMonitorMode && !activeShift) {
-                                                alert('أنت في وضع المراقبة الحية (عرض فقط). لبدء تشغيل أجهزة يرجى فتح وردية كاشير أولاً.');
-                                                return;
-                                            }
                                             setStartModalRoom(room);
                                         }
                                     }}
@@ -947,10 +954,11 @@ export default function LoungePosPage() {
                             <div className="space-y-3 pt-2">
                                 <p className="text-slate-400">سعر الساعة للمحاكي: <b className="text-white font-mono">{startModalRoom.rates?.simPrice || 60} ج.م</b></p>
                                 <Button
+                                    disabled={isStartingRoom}
                                     onClick={() => executeStartRoom('SIM', 'single', 0)}
                                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl"
                                 >
-                                    ♾️ تشغيل وقت مفتوح
+                                    {isStartingRoom ? 'جارٍ التشغيل...' : '♾️ تشغيل وقت مفتوح'}
                                 </Button>
                                 <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
                                     <label className="text-slate-400 block text-right font-bold">أو تحديد وقت محدد بالدقائق:</label>
@@ -967,10 +975,11 @@ export default function LoungePosPage() {
                                         ))}
                                     </div>
                                     <Button
+                                        disabled={isStartingRoom}
                                         onClick={() => executeStartRoom('SIM', 'single', simTargetMins)}
                                         className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl mt-2"
                                     >
-                                        ⏱️ بدء الجلسة ({simTargetMins} د)
+                                        {isStartingRoom ? 'جارٍ البدء...' : `⏱️ بدء الجلسة (${simTargetMins} د)`}
                                     </Button>
                                 </div>
                             </div>
@@ -981,8 +990,9 @@ export default function LoungePosPage() {
                                     {startModalRoom.supportsPS4 !== false && (
                                         <>
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS4', 'single', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-violet-400 block">PS4</span>
                                                 <span className="font-bold text-white block">👤 فردي</span>
@@ -990,8 +1000,9 @@ export default function LoungePosPage() {
                                             </button>
 
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS4', 'multi', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-violet-400 block">PS4</span>
                                                 <span className="font-bold text-white block">👥 Multi (زوجي)</span>
@@ -1003,8 +1014,9 @@ export default function LoungePosPage() {
                                     {startModalRoom.supportsPS5 !== false && (
                                         <>
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS5', 'single', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-rose-400 block">PS5</span>
                                                 <span className="font-bold text-white block">👤 فردي</span>
@@ -1012,8 +1024,9 @@ export default function LoungePosPage() {
                                             </button>
 
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS5', 'multi', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-rose-400 block">PS5</span>
                                                 <span className="font-bold text-white block">👥 Multi (زوجي)</span>
@@ -1051,7 +1064,12 @@ export default function LoungePosPage() {
                                         تحويل إلى {activeManageRoom.session.playMode === 'single' ? 'Multi 👥' : 'فردي 👤'}
                                     </button>
                                 )}
-                                <button onClick={() => setActiveManageRoom(null)}><X size={16} className="text-slate-400" /></button>
+                                <button
+                                    onClick={() => setActiveManageRoom(null)}
+                                    className="p-1 hover:text-white transition"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
                             </div>
                         </div>
 
@@ -1164,7 +1182,7 @@ export default function LoungePosPage() {
                 </div>
             )}
 
-            {/* MODAL 3: نافذة إدخال باسورد المدير (فحص قاعدة البيانات) */}
+            {/* MODAL 3: نافذة إدخال باسورد المدير */}
             {showAdminPinModal && (
                 <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-xs w-full text-center space-y-4 shadow-2xl">
@@ -1186,15 +1204,69 @@ export default function LoungePosPage() {
                         />
                         <div className="flex gap-2">
                             <Button
-                                disabled={adminPinLoading}
                                 onClick={handleVerifyAdminPin}
                                 className="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl"
                             >
-                                {adminPinLoading ? 'جارٍ التحقق...' : 'دخول'}
+                                دخول
                             </Button>
                             <button
                                 onClick={() => { setShowAdminPinModal(false); setAdminPinInput(''); }}
                                 className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl"
+                            >
+                                إلغاء
+                            </button>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800">
+                            <button
+                                onClick={() => {
+                                    setShowAdminPinModal(false);
+                                    setShowForgotPinModal(true);
+                                }}
+                                className="text-xs text-rose-400 hover:underline font-bold inline-flex items-center gap-1"
+                            >
+                                <HelpCircle size={13} /> نسيت كلمة السر؟
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 3.1: استعادة كلمة السر */}
+            {showForgotPinModal && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl text-xs">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                            <Unlock size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-black text-white">استعادة الرقم السري لمدير الصالة</h3>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                                أدخل الـ PIN الجديد الذي ترغب في تعيينه للصالة فورياً:
+                            </p>
+                        </div>
+
+                        <div className="space-y-2 text-right">
+                            <label className="text-slate-300 font-bold block text-[11px] pt-1">الرقم السري الجديد:</label>
+                            <input
+                                type="text"
+                                placeholder="مثال: 1234 أو 5555"
+                                value={newRecoveredPin}
+                                onChange={e => setNewRecoveredPin(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-center focus:outline-none focus:border-amber-500"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <Button
+                                onClick={handleRecoverPin}
+                                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl"
+                            >
+                                تأكيد وتعيين الـ PIN
+                            </Button>
+                            <button
+                                onClick={() => setShowForgotPinModal(false)}
+                                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl"
                             >
                                 إلغاء
                             </button>
@@ -1683,10 +1755,10 @@ export default function LoungePosPage() {
                             </div>
                         )}
 
-                        {/* PIN Management */}
+                        {/* PIN */}
                         {adminActiveTab === 'pin' && (
                             <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 max-w-sm mx-auto space-y-3">
-                                <h4 className="font-bold text-white text-xs">تغيير الرقم السري لمدير الصالة (في قاعدة البيانات):</h4>
+                                <h4 className="font-bold text-white text-xs">تغيير الرقم السري لمدير الصالة:</h4>
                                 <input
                                     type="password"
                                     placeholder="أدخل رقماً سرياً جديداً..."
@@ -1695,7 +1767,7 @@ export default function LoungePosPage() {
                                     className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-center text-sm"
                                 />
                                 <Button onClick={handleChangePin} className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl">
-                                    حفظ الرقم السري بالسيرفر
+                                    حفظ الرقم السري
                                 </Button>
                             </div>
                         )}
@@ -2015,6 +2087,26 @@ export default function LoungePosPage() {
                         fetchLoungeData();
                     }}
                 />
+            )}
+            {/* شاشة القفل التام ومنع التفاعل أثناء معالجة أي طلب (Full-Screen Action Blocker) */}
+            {isGlobalLoading && (
+                <div
+                    className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none cursor-wait animate-in fade-in duration-150"
+                    style={{ pointerEvents: 'all' }}
+                >
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 shadow-2xl max-w-xs w-full text-center">
+                        <div className="w-14 h-14 rounded-2xl bg-violet-600/15 border border-violet-500/30 text-violet-400 flex items-center justify-center shadow-inner">
+                            <RefreshCw size={28} className="animate-spin text-violet-400" />
+                        </div>
+                        <div>
+                            <h4 className="text-white font-black text-sm">جارٍ تنفيذ العملية...</h4>
+                            <p className="text-slate-400 text-xs mt-1.5 leading-relaxed font-medium">{loadingMessage}</p>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                            <div className="bg-gradient-to-r from-violet-600 via-indigo-500 to-violet-600 h-full w-full animate-pulse rounded-full" />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -67,6 +67,10 @@ export default function LoungePosPage() {
     // تشغيل جهاز
     const [startModalRoom, setStartModalRoom] = useState<Room | null>(null);
     const [simTargetMins, setSimTargetMins] = useState(30);
+    const [isStartingRoom, setIsStartingRoom] = useState(false);
+    // قفل شاشة كامل لمنع أي نقرات متكررة أثناء انتظار استجابة السيرفر
+    const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('جارٍ معالجة الطلب وتحديث السيرفر...');
 
     // إدارة الجلسة النشطة
     const [activeManageRoom, setActiveManageRoom] = useState<Room | null>(null);
@@ -306,7 +310,10 @@ export default function LoungePosPage() {
 
     // تشغيل جهاز
     const executeStartRoom = async (consoleType: 'PS4' | 'PS5' | 'SIM', playMode: 'single' | 'multi', targetMinutes = 0) => {
-        if (!startModalRoom) return;
+        if (!startModalRoom || isStartingRoom || isGlobalLoading) return;
+        setIsStartingRoom(true);
+        setIsGlobalLoading(true);
+        setLoadingMessage(`جارٍ بدء تشغيل ${startModalRoom.name}... يرجى الانتظار`);
         try {
             await api.post('/lounge/toggle-room', {
                 roomId: startModalRoom._id,
@@ -315,36 +322,49 @@ export default function LoungePosPage() {
                 targetMinutes
             });
             setStartModalRoom(null);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل تشغيل الغرفة');
+        } finally {
+            setIsStartingRoom(false);
+            setIsGlobalLoading(false);
         }
     };
 
     // إنهاء الجلسة وإصدار الفاتورة
     const handleStopRoom = async (roomId: string) => {
+        if (isGlobalLoading) return;
         if (!confirm('تأكيد إيقاف اللعب وإصدار الفاتورة؟')) return;
         stopBuzzer(roomId);
 
+        setIsGlobalLoading(true);
+        setLoadingMessage('جارٍ إيقاف اللعب واحتساب الفاتورة وترحيل الوردية...');
         try {
             const res = await api.post('/lounge/toggle-room', { roomId });
             setActiveManageRoom(null);
             setCurrentBill(res.data.bill);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل محاسبة الغرفة');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
     // تحويل نمط اللعب الحي
     const handleSwitchMode = async (roomId: string, newMode: 'single' | 'multi') => {
+        if (isGlobalLoading) return;
         if (!confirm(`تأكيد التحويل إلى وضع ${newMode === 'multi' ? 'Multi 👥' : 'فردي 👤'} واحتساب الوقت السابق؟`)) return;
+        setIsGlobalLoading(true);
+        setLoadingMessage('جارٍ تحويل نمط اللعب واحتساب فترات الوقت...');
         try {
             await api.post('/lounge/switch-mode', { roomId, newMode });
             setActiveManageRoom(null);
-            fetchLoungeData();
+            await fetchLoungeData();
         } catch (err: any) {
             alert(err.response?.data?.error || 'فشل تحويل نمط اللعب');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
@@ -418,24 +438,57 @@ export default function LoungePosPage() {
 
     // طلب الإلغاء أو التصفير
     const handleVoidRoom = async (voidType: 'time' | 'all') => {
-        if (!activeManageRoom) return;
+        if (!activeManageRoom || isGlobalLoading) return;
         const confirmMsg = voidType === 'time'
-            ? 'تأكيد تصفير وقت الجلسة فقط؟ (الطلبات ستظل محسوبة وسيرفع إذن للإدارة)'
+            ? 'تأكيد تصفير وقت الجلسة وإنهاء اللعب ومحاسبة الطلبات إن وُجدت؟'
             : 'تأكيد إلغاء الغرفة بالكامل ومسح الوقت والطلبات؟';
 
         if (!confirm(confirmMsg)) return;
 
         stopBuzzer(activeManageRoom._id);
+
+        const roomName = activeManageRoom.name;
+        const currentCharges = [...roomCharges];
+        const ordersTotal = currentCharges.reduce(
+            (sum, item) => sum + (Number(item.price) * (Number(item.qty) || 1)),
+            0
+        );
+
+        setIsGlobalLoading(true);
+        setLoadingMessage(voidType === 'time' ? 'جارٍ تصفير وقت الجلسة وإنهاء اللعب ومحاسبة الطلبات...' : 'جارٍ إلغاء الغرفة واسترجاع المخزون...');
         try {
-            await api.post('/lounge/refunds/request', {
+            const res = await api.post('/lounge/refunds/request', {
                 roomId: activeManageRoom._id,
                 voidType
             });
-            alert('تمت العملية وإرسال طلب المرتجع إلى لوحة المدير للاعتماد.');
+
+            // 1. إغلاق نافذة إدارة الغرفة
             setActiveManageRoom(null);
-            fetchLoungeData();
+
+            // 2. إظهار الفاتورة الحرارية فوراً للطباعة والتحصيل
+            if (voidType === 'time') {
+                const finalBill = res.data?.bill || {
+                    roomName: roomName,
+                    actualMinutes: 0,
+                    billedMinutes: 0,
+                    timeCost: 0,
+                    ordersCost: ordersTotal,
+                    total: ordersTotal,
+                    intervalsDetails: [{ mode: 'وقت مصفر (إعفاء إداري)', billedMins: 0, cost: 0 }],
+                    chargesDetails: currentCharges
+                };
+
+                if (finalBill.total > 0 || finalBill.chargesDetails?.length > 0) {
+                    setCurrentBill(finalBill);
+                }
+            }
+
+            // 3. تحديث قائمة الغرف لتصبح خضراء ومتاحة
+            await fetchLoungeData();
         } catch (err: any) {
-            alert(err.response?.data?.error || 'فشل رفع طلب الإلغاء');
+            alert(err.response?.data?.error || 'فشل تنفيذ العملية');
+        } finally {
+            setIsGlobalLoading(false);
         }
     };
 
@@ -901,10 +954,11 @@ export default function LoungePosPage() {
                             <div className="space-y-3 pt-2">
                                 <p className="text-slate-400">سعر الساعة للمحاكي: <b className="text-white font-mono">{startModalRoom.rates?.simPrice || 60} ج.م</b></p>
                                 <Button
+                                    disabled={isStartingRoom}
                                     onClick={() => executeStartRoom('SIM', 'single', 0)}
                                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl"
                                 >
-                                    ♾️ تشغيل وقت مفتوح
+                                    {isStartingRoom ? 'جارٍ التشغيل...' : '♾️ تشغيل وقت مفتوح'}
                                 </Button>
                                 <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
                                     <label className="text-slate-400 block text-right font-bold">أو تحديد وقت محدد بالدقائق:</label>
@@ -921,10 +975,11 @@ export default function LoungePosPage() {
                                         ))}
                                     </div>
                                     <Button
+                                        disabled={isStartingRoom}
                                         onClick={() => executeStartRoom('SIM', 'single', simTargetMins)}
                                         className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl mt-2"
                                     >
-                                        ⏱️ بدء الجلسة ({simTargetMins} د)
+                                        {isStartingRoom ? 'جارٍ البدء...' : `⏱️ بدء الجلسة (${simTargetMins} د)`}
                                     </Button>
                                 </div>
                             </div>
@@ -935,8 +990,9 @@ export default function LoungePosPage() {
                                     {startModalRoom.supportsPS4 !== false && (
                                         <>
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS4', 'single', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-violet-400 block">PS4</span>
                                                 <span className="font-bold text-white block">👤 فردي</span>
@@ -944,8 +1000,9 @@ export default function LoungePosPage() {
                                             </button>
 
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS4', 'multi', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-violet-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-violet-400 block">PS4</span>
                                                 <span className="font-bold text-white block">👥 Multi (زوجي)</span>
@@ -957,8 +1014,9 @@ export default function LoungePosPage() {
                                     {startModalRoom.supportsPS5 !== false && (
                                         <>
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS5', 'single', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-rose-400 block">PS5</span>
                                                 <span className="font-bold text-white block">👤 فردي</span>
@@ -966,8 +1024,9 @@ export default function LoungePosPage() {
                                             </button>
 
                                             <button
+                                                disabled={isStartingRoom}
                                                 onClick={() => executeStartRoom('PS5', 'multi', 0)}
-                                                className="p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition"
+                                                className={`p-3.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-rose-500 rounded-2xl text-center space-y-1 transition ${isStartingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <span className="font-mono font-bold text-rose-400 block">PS5</span>
                                                 <span className="font-bold text-white block">👥 Multi (زوجي)</span>
@@ -1005,7 +1064,12 @@ export default function LoungePosPage() {
                                         تحويل إلى {activeManageRoom.session.playMode === 'single' ? 'Multi 👥' : 'فردي 👤'}
                                     </button>
                                 )}
-                                <button onClick={() => setActiveManageRoom(null)}><X size={16} className="text-slate-400" /></button>
+                                <button 
+                                    onClick={() => setActiveManageRoom(null)} 
+                                    className="p-1 hover:text-white transition"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
                             </div>
                         </div>
 
@@ -2023,6 +2087,26 @@ export default function LoungePosPage() {
                         fetchLoungeData();
                     }}
                 />
+            )}
+            {/* شاشة القفل التام ومنع التفاعل أثناء معالجة أي طلب (Full-Screen Action Blocker) */}
+            {isGlobalLoading && (
+                <div
+                    className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none cursor-wait animate-in fade-in duration-150"
+                    style={{ pointerEvents: 'all' }}
+                >
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 shadow-2xl max-w-xs w-full text-center">
+                        <div className="w-14 h-14 rounded-2xl bg-violet-600/15 border border-violet-500/30 text-violet-400 flex items-center justify-center shadow-inner">
+                            <RefreshCw size={28} className="animate-spin text-violet-400" />
+                        </div>
+                        <div>
+                            <h4 className="text-white font-black text-sm">جارٍ تنفيذ العملية...</h4>
+                            <p className="text-slate-400 text-xs mt-1.5 leading-relaxed font-medium">{loadingMessage}</p>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                            <div className="bg-gradient-to-r from-violet-600 via-indigo-500 to-violet-600 h-full w-full animate-pulse rounded-full" />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
