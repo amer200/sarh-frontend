@@ -37,6 +37,7 @@ interface OpenOrder {
     invoiceNumber: string;
     orderType: 'takeaway' | 'dine_in' | 'delivery';
     orderStatus: string;
+    tableId?: string;
     tableNumber?: string;
     deliveryInfo?: {
         customerName?: string;
@@ -62,17 +63,14 @@ interface OpenOrder {
     cashierName?: string;
 }
 
-const DEFAULT_TABLES = [
-    { number: 'طاولة 1', section: 'الصالة الداخلية' },
-    { number: 'طاولة 2', section: 'الصالة الداخلية' },
-    { number: 'طاولة 3', section: 'الصالة الداخلية' },
-    { number: 'طاولة 4', section: 'الصالة الداخلية' },
-    { number: 'طاولة 5 VIP', section: 'قسم VIP' },
-    { number: 'طاولة 6 VIP', section: 'قسم VIP' },
-    { number: 'تراس 1', section: 'التراس الخارجي' },
-    { number: 'تراس 2', section: 'التراس الخارجي' },
-    { number: 'تراس 3', section: 'التراس الخارجي' },
-];
+interface RestaurantTableItem {
+    _id: string;
+    tableNumber: string;
+    section: string;
+    capacity: number;
+    status: 'available' | 'occupied';
+    activeOrderId?: string;
+}
 
 export default function PosPage() {
     const router = useRouter();
@@ -92,7 +90,9 @@ export default function PosPage() {
 
     // أنماط المطاعم والكافيهات (F&B Workflow)
     const [orderType, setOrderType] = useState<'takeaway' | 'dine_in' | 'delivery'>('takeaway');
+    const [tables, setTables] = useState<RestaurantTableItem[]>([]);
     const [selectedTable, setSelectedTable] = useState<string>('');
+    const [selectedTableId, setSelectedTableId] = useState<string>('');
     const [showTablesModal, setShowTablesModal] = useState(false);
     
     // بيانات الدليفري والتوصيل
@@ -156,10 +156,12 @@ export default function PosPage() {
         cart,
         activeShift,
         products,
+        tables,
         checkoutLoading,
         taxRatePercent,
         orderType,
         selectedTable,
+        selectedTableId,
         deliveryInfo,
         showShiftModal,
         showCloseShiftModal,
@@ -180,10 +182,12 @@ export default function PosPage() {
             cart,
             activeShift,
             products,
+            tables,
             checkoutLoading,
             taxRatePercent,
             orderType,
             selectedTable,
+            selectedTableId,
             deliveryInfo,
             showShiftModal,
             showCloseShiftModal,
@@ -202,10 +206,12 @@ export default function PosPage() {
         cart,
         activeShift,
         products,
+        tables,
         checkoutLoading,
         taxRatePercent,
         orderType,
         selectedTable,
+        selectedTableId,
         deliveryInfo,
         showShiftModal,
         showCloseShiftModal,
@@ -225,12 +231,13 @@ export default function PosPage() {
         try {
             setErrorMessage('');
 
-            const [shiftRes, prodRes, subRes, setRes, ordersRes] = await Promise.all([
+            const [shiftRes, prodRes, subRes, setRes, ordersRes, tablesRes] = await Promise.all([
                 api.get('/pos/shifts/current').catch(() => ({ data: { data: null } })),
                 api.get('/pos/products').catch(() => ({ data: { data: [] } })),
                 api.get('/subscriptions/status').catch(() => ({ data: { data: null } })),
                 api.get('/pos/settings').catch(() => ({ data: { data: null } })),
-                api.get('/pos/orders').catch(() => ({ data: { data: [] } }))
+                api.get('/pos/orders').catch(() => ({ data: { data: [] } })),
+                api.get('/pos/tables').catch(() => ({ data: { data: [] } }))
             ]);
 
             if (setRes.data?.data) {
@@ -244,6 +251,11 @@ export default function PosPage() {
 
             const cats = Array.from(new Set(prods.map(p => p.category || 'عام')));
             setCategories(['الكل', ...cats]);
+
+            // جلب وتعيين الطاولات الحية
+            if (tablesRes.data?.data) {
+                setTables(tablesRes.data.data);
+            }
 
             // حصر الطلبات المفتوحة في الصالة أو الدليفري
             if (ordersRes.data?.data) {
@@ -315,6 +327,7 @@ export default function PosPage() {
             taxRatePercent: currentTax,
             orderType: currentType,
             selectedTable: currentTable,
+            selectedTableId: currentTableId,
             deliveryInfo: currentDelivery
         } = stateRef.current;
 
@@ -342,6 +355,7 @@ export default function PosPage() {
         try {
             const res = await api.post('/pos/orders', {
                 orderType: currentType,
+                tableId: currentType === 'dine_in' ? currentTableId : undefined,
                 tableNumber: currentType === 'dine_in' ? currentTable : undefined,
                 deliveryInfo: currentType === 'delivery' ? currentDelivery : undefined,
                 items: currentCart.map(item => ({
@@ -357,6 +371,7 @@ export default function PosPage() {
             setLastInvoice(res.data.data);
             setCart([]);
             setSelectedTable('');
+            setSelectedTableId('');
             setOrderType('takeaway');
             fetchData();
         } catch (err: any) {
@@ -386,6 +401,7 @@ export default function PosPage() {
         try {
             const res = await api.post('/pos/orders', {
                 orderType,
+                tableId: orderType === 'dine_in' ? selectedTableId : undefined,
                 tableNumber: orderType === 'dine_in' ? selectedTable : undefined,
                 deliveryInfo: orderType === 'delivery' ? deliveryInfo : undefined,
                 items: cart.map(item => ({
@@ -415,6 +431,7 @@ export default function PosPage() {
 
             setCart([]);
             setSelectedTable('');
+            setSelectedTableId('');
             setOrderType('takeaway');
             fetchData();
         } catch (err: any) {
@@ -432,21 +449,6 @@ export default function PosPage() {
                 orderId: order._id,
                 paymentMethod: method,
                 paidAmount: order.financials.totalAmount
-            }).catch(async () => {
-                // بديل متوافق
-                return await api.post('/pos/orders', {
-                    orderType: order.orderType,
-                    tableNumber: order.tableNumber,
-                    deliveryInfo: order.deliveryInfo,
-                    items: order.items.map((it: any) => ({
-                        productId: it.productId || it._id,
-                        quantity: it.quantity,
-                        notes: it.notes
-                    })),
-                    paymentMethod: method,
-                    paidAmount: order.financials.totalAmount,
-                    isHold: false
-                });
             });
 
             setShowOpenOrdersModal(false);
@@ -922,6 +924,7 @@ export default function PosPage() {
                                 onClick={() => {
                                     setOrderType('takeaway');
                                     setSelectedTable('');
+                                    setSelectedTableId('');
                                 }}
                                 className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${
                                     orderType === 'takeaway'
@@ -1106,7 +1109,7 @@ export default function PosPage() {
                 </div>
             </div>
 
-            {/* MODAL 1: اختيار طاولات الصالة */}
+            {/* MODAL 1: اختيار طاولات الصالة الحية من قاعدة البيانات */}
             {showTablesModal && (
                 <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
@@ -1118,35 +1121,42 @@ export default function PosPage() {
                             <button onClick={() => setShowTablesModal(false)}><X size={16} className="text-slate-400" /></button>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1">
-                            {DEFAULT_TABLES.map(table => {
-                                const activeOrderOnTable = openOrders.find(o => o.tableNumber === table.number);
-                                const isOccupied = Boolean(activeOrderOnTable);
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                            {tables.map(table => {
+                                const isOccupied = table.status === 'occupied';
+                                const isSelected = selectedTable === table.tableNumber;
+                                const activeOrderOnTable = openOrders.find(o => o.tableNumber === table.tableNumber || o.tableId === table._id);
 
                                 return (
                                     <button
-                                        key={table.number}
+                                        key={table._id}
                                         type="button"
                                         onClick={() => {
-                                            setSelectedTable(table.number);
+                                            setSelectedTable(table.tableNumber);
+                                            setSelectedTableId(table._id);
                                             setOrderType('dine_in');
                                             setShowTablesModal(false);
                                         }}
                                         className={`p-3.5 rounded-2xl border text-right transition flex flex-col justify-between ${
                                             isOccupied
                                                 ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:border-rose-500'
-                                                : selectedTable === table.number
+                                                : isSelected
                                                     ? 'bg-amber-600 border-amber-500 text-slate-950 font-black'
                                                     : 'bg-slate-950 border-slate-800 hover:border-emerald-500 text-slate-200'
                                         }`}
                                     >
                                         <div className="flex justify-between items-center">
-                                            <span className="font-bold">{table.number}</span>
-                                            <span className={`w-2 h-2 rounded-full ${isOccupied ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                            <span className="font-bold">{table.tableNumber}</span>
+                                            <span className={`w-2.5 h-2.5 rounded-full ${isOccupied ? 'bg-rose-500 shadow-sm shadow-rose-500' : 'bg-emerald-500'}`} />
                                         </div>
-                                        <span className="text-[10px] text-slate-400 mt-2 block font-mono">{table.section}</span>
+                                        <div className="mt-2 flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                                            <span>{table.section}</span>
+                                            <span>{table.capacity} أفراد</span>
+                                        </div>
                                         {isOccupied && (
-                                            <span className="text-[9px] text-rose-400 font-bold mt-1">مشغولة ({activeOrderOnTable?.financials?.totalAmount} ج)</span>
+                                            <span className="text-[9px] text-rose-400 font-bold mt-1">
+                                                مشغولة {activeOrderOnTable ? `(${activeOrderOnTable.financials?.totalAmount} ج)` : ''}
+                                            </span>
                                         )}
                                     </button>
                                 );
@@ -1154,8 +1164,8 @@ export default function PosPage() {
                         </div>
 
                         <div className="pt-2 flex justify-between items-center text-[11px] text-slate-400 border-t border-slate-800">
-                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> طاولة متاحة</span>
-                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> طاولة مشغولة</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> طاولة متاحة</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> طاولة مشغولة بطلب</span>
                         </div>
                     </div>
                 </div>
@@ -1484,7 +1494,7 @@ export default function PosPage() {
                 </div>
             )}
 
-            {/* Shift Open Modal */}
+            {/* Shift Modals & Z-Report Modals */}
             {showShiftModal && (
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
